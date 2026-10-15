@@ -46,10 +46,16 @@ jobs:
         run: npx playwright test
         env:
           MARKET: es
-          VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
-          BETSSON_USERNAME_WITH_BALANCE: ${{ secrets.BETSSON_USERNAME_WITH_BALANCE }}
-          BETSSON_PASSWORD: ${{ secrets.BETSSON_PASSWORD }}
           CI: true
+          CDP_URL: "http://127.0.0.1:9222"
+          VLM_BASE_URL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+          VLM_MODEL: "gemini-3.5-flash,gemini-3.1-flash-lite,gemini-flash-latest"
+          VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
+          BETSSON_ES_FUNDED_USER: ${{ secrets.BETSSON_ES_FUNDED_USER }}
+          BETSSON_ES_FUNDED_PASS: ${{ secrets.BETSSON_ES_FUNDED_PASS }}
+          BETSSON_ES_EMPTY_USER: ${{ secrets.BETSSON_ES_EMPTY_USER }}
+          BETSSON_ES_EMPTY_PASS: ${{ secrets.BETSSON_ES_EMPTY_PASS }}
+          BETSSON_ES_EXTRA_HEADERS: '{"x-obg-trusted-traffic":"1","x-obg-country-code":"ES","x-obg-origin":"ES","x-obg-internal":"1"}'
 
       - name: Upload Playwright Report Artifact
         uses: actions/upload-artifact@v4
