@@ -3,18 +3,14 @@
   "version": "1.0.0",
   "description": "Intelligent Game Validation — Betsson Malackathon 2026",
   "scripts": {
-    "test": "playwright test --grep-invert calibrate",
+    "test": "playwright test",
     "test:unit": "playwright test --project=unit",
-    "calibrate": "cross-env CALIBRATE=1 HEADED=1 playwright test calibrate",
     "typecheck": "tsc",
     "report": "playwright show-report report/html",
     "test:sweet-bonanza": "playwright test --project=es-sweet-bonanza",
     "test:starburst": "playwright test --project=es-starburst",
-    "calibrate:firefox": "cross-env BROWSER=firefox CALIBRATE=1 HEADED=1 playwright test calibrate",
-    "calibrate:cdp": "cross-env CDP_URL=http://127.0.0.1:9222 CALIBRATE=1 playwright test calibrate",
-    "test:cdp": "cross-env CDP_URL=http://127.0.0.1:9222 playwright test --grep-invert calibrate",
     "game": "cross-env KEEP_OPEN=1 playwright test enter-game --project=es-sweet-bonanza",
-    "vlm-spin": "playwright test vlm-spin --project=es-sweet-bonanza"
+    "scenario1": "playwright test scenario1 --project=es-sweet-bonanza"
   },
   "keywords": [],
   "author": "",
@@ -29,7 +25,6 @@
     "dotenv": "^16.4.5",
     "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0",
-    "tesseract.js": "^6.0.1",
     "typescript": "^5.9.2"
   },
   "dependencies": {

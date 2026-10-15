@@ -4,16 +4,25 @@ import { BetssonShell } from '../src/pages/BetssonShell';
 import { cdpUrl, test } from './fixtures';
 
 // Makes sure each account has a logged-in session before the scenarios run.
-// - CDP mode: the person logged in by hand in the attached Chrome; only check that the session is there.
+// - CDP mode: the attached Chrome is the person's own window. If its Betsson session is closed (it
+//   expires after ~19 min idle), log in there with the funded account: it is a real browser the
+//   person already uses, not a fresh automated window, which is what Betsson blocks.
 // - Otherwise: log in once and save the session. Betsson rate-limits logins ("Actualiza la página y
 //   vuelve a intentarlo en breve"), so a saved session that is still valid is reused instead.
 // This project runs with trace, video and screenshots off so the credentials never end up in any evidence.
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test('logged-in session in the attached Chrome', async ({ shell }) => {
+test('logged-in session in the attached Chrome', async ({ shell, market }) => {
   test.skip(!cdpUrl, 'Only with CDP_URL');
-  const loggedIn = await shell.isLoggedIn();
-  if (!loggedIn) throw new Error(`Not logged in, or the Betsson session expired (it lasts ~19 min): log in by hand in the Chrome window at ${cdpUrl} and run again`);
+  if (await shell.isLoggedIn()) return;
+  if (!hasCredentials(market.id, 'funded')) {
+    throw new Error(`The Betsson session in the Chrome at ${cdpUrl} is closed and BETSSON_ES_FUNDED_* are not set: log in by hand`);
+  }
+  // isLoggedIn() left the lobby open, logged out.
+  await shell.login(getCredentials(market.id, 'funded'));
+  if (!(await shell.isLoggedIn())) {
+    throw new Error('Logged in, but Betsson did not load the account (wallet/session): check the Chrome window');
+  }
 });
 
 for (const account of ['funded', 'empty'] as const) {

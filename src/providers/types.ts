@@ -8,13 +8,6 @@ export interface Region {
   h: number;
 }
 
-/**
- * Image filter applied before OCR on the HUD.
- * - none: grayscale only.
- * - warm-text: keeps yellow/white text and drops pink/blue/purple backgrounds (Pragmatic Play style).
- */
-export type OcrFilter = 'none' | 'warm-text';
-
 /** Point relative to the game frame (fractions of width/height). */
 export interface Point {
   x: number;
@@ -24,43 +17,22 @@ export interface Point {
 export const FULL_FRAME: Region = { x: 0, y: 0, w: 1, h: 1 };
 
 /**
- * How the game looks and reacts on screen. The game is a canvas inside an iframe, so everything
- * here is screen geometry and timing, never DOM selectors. A provider sets the defaults for all of
- * its games and a game overrides only what differs.
+ * How the game reacts on screen. The game is a canvas inside an iframe, so everything here is
+ * screen geometry and timing, never DOM selectors. Reading amounts and finding the spin button is
+ * the VLM's job; this only covers what is checked locally, without spending VLM calls. A provider
+ * sets the defaults for all its games and a game overrides only what differs.
  */
 export interface VisualProfile {
   /** Where to click to get past the intro/splash screen ("Continue", "Press to play"...). */
   introDismiss: Point;
-  /** Neutral spot clicked to give the game keyboard focus before pressing `spinKey`. */
-  focusPoint: Point;
-  /** Keyboard key that spins, tried first when the provider supports it. */
-  spinKey?: string;
-  /** Spin button position, used when there is no key or the key did not start a spin. */
-  spinButton?: Point;
   /** Reels area, used to detect that the spin starts and stops. */
   reels: Region;
-  /** Area searched for balance/bet/win. Defaults to the whole frame: labels are found by OCR wherever they are. */
-  hud?: Region;
-  /** How to clean up the HUD image before OCR. Defaults to 'none'. */
-  ocrFilter?: OcrFilter;
-  /**
-   * Where the credit/bet numbers themselves are, read with digits-only OCR. More reliable than
-   * finding the labels in decorative fonts; fields left out are found by label inside `hud`.
-   */
-  fields?: { credit?: Region; bet?: Region };
   /** Fraction of changed reel pixels that counts as "the reels started moving". */
   spinStartDiff: number;
   /** Below this fraction of changed pixels between frames the screen counts as still. */
   stableDiff: number;
   /** How long the screen has to stay still to count the spin as settled. */
   stableForMs: number;
-  spinTimeoutMs: number;
-}
-
-export interface HudLabels {
-  credit: RegExp;
-  bet: RegExp;
-  win: RegExp;
 }
 
 /** One request/response between the game client and the provider's game server, already decoded. */
@@ -74,7 +46,6 @@ export interface GameCall {
   totalWin?: number;
   /** The server is ready for a new spin: the round is over and settled. */
   roundClosed: boolean;
-  currency?: string;
 }
 
 /**
@@ -93,9 +64,7 @@ export interface TrafficParser {
 export interface ProviderProfile {
   id: string;
   name: string;
-  /** HUD labels per player language. */
-  labels: Record<Language, HudLabels>;
-  /** Insufficient-balance message per player language. */
+  /** Insufficient-balance message per player language (scenario 2). */
   insufficientBalance: Record<Language, RegExp>;
   visual: VisualProfile;
   /** Decoder for the game-server traffic, when known. */

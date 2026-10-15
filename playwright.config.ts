@@ -21,19 +21,11 @@ const marketProjects = (Object.keys(markets) as MarketId[]).flatMap((marketId) =
     .filter((game) => game.paths[marketId])
     .map((game) => ({
       name: `${marketId}-${game.id}`,
-      testMatch: /scenario\d.*\.spec\.ts|calibrate\.spec\.ts|enter-game\.spec\.ts|vlm-spin\.spec\.ts/,
+      testMatch: /scenario\d.*\.spec\.ts|enter-game\.spec\.ts/,
       dependencies: [`setup-${marketId}`],
       use: { marketId, gameId: game.id },
     })),
 ]);
-
-/** BROWSER=chrome (installed Google Chrome, default) | chromium (bundled) | firefox (Playwright's build). */
-function browserOptions() {
-  const browser = process.env.BROWSER ?? 'chrome';
-  if (browser === 'firefox') return { ...devices['Desktop Firefox'] };
-  if (browser === 'chromium') return { ...devices['Desktop Chrome'] };
-  return { ...devices['Desktop Chrome'], channel: 'chrome' };
-}
 
 /** Custom options consumed by tests/fixtures.ts. */
 interface ProjectOptions {
@@ -54,7 +46,9 @@ export default defineConfig<ProjectOptions>({
     ['./src/report/ChecksReporter.ts'],
   ],
   use: {
-    ...browserOptions(),
+    ...devices['Desktop Chrome'],
+    // Real Google Chrome, as a player would use. With CDP_URL the person's own Chrome is used instead.
+    channel: 'chrome',
     viewport: { width: 1600, height: 900 },
     // Sharper canvas screenshots for OCR; mouse coordinates stay in CSS pixels.
     deviceScaleFactor: 2,

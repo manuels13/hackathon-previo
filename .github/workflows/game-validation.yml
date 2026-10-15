@@ -36,6 +36,9 @@ jobs:
           BETSSON_ES_EMPTY_USER: ${{ secrets.BETSSON_ES_EMPTY_USER }}
           BETSSON_ES_EMPTY_PASS: ${{ secrets.BETSSON_ES_EMPTY_PASS }}
           BETSSON_ES_EXTRA_HEADERS: ${{ secrets.BETSSON_ES_EXTRA_HEADERS }}
+          VLM_BASE_URL: ${{ secrets.VLM_BASE_URL }}
+          VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
+          VLM_MODEL: ${{ secrets.VLM_MODEL }}
       # Only the report folder is uploaded: .auth/ (saved sessions) never leaves the runner.
       - uses: actions/upload-artifact@v4
         if: always()

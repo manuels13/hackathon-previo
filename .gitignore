@@ -1,7 +1,6 @@
 node_modules/
 .env
 .auth/
-report/
-test-results/
-playwright-report/
-*.traineddata
+/report/
+/test-results/
+/playwright-report/

@@ -42,11 +42,6 @@ export class RoundRecorder {
     return this.calls.length;
   }
 
-  /** Latest balance the server reported, e.g. right after the game loaded. */
-  lastBalance(): number | undefined {
-    return [...this.calls].reverse().find((c) => c.balance !== undefined)?.balance;
-  }
-
   /** Whether a spin request has been answered since `mark`. */
   spinSentSince(mark: number): boolean {
     return this.calls.slice(mark).some((c) => c.kind === 'spin');

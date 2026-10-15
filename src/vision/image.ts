@@ -1,6 +1,6 @@
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import type { OcrFilter, Region } from '../providers/types';
+import type { Region } from '../providers/types';
 
 export function crop(png: Buffer, region: Region): Buffer {
   const src = PNG.sync.read(png);
@@ -20,33 +20,6 @@ export function diffRatio(a: Buffer, b: Buffer): number {
   if (imgA.width !== imgB.width || imgA.height !== imgB.height) return 1;
   const changed = pixelmatch(imgA.data, imgB.data, null, imgA.width, imgA.height, { threshold: 0.1 });
   return changed / (imgA.width * imgA.height);
-}
-
-const filters: Record<OcrFilter, (r: number, g: number, b: number) => number> = {
-  none: (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b,
-  // Dark where the pixel is warm (yellow/orange: red and green well above blue) or near white.
-  'warm-text': (r, g, b) => {
-    const warmth = (Math.min(r, g) - b) * 2;
-    const white = r > 235 && g > 235 && b > 235 ? 255 : 0;
-    return 255 - Math.max(0, Math.min(255, warmth + white));
-  },
-};
-
-/** Upscales and filters a screenshot so OCR reads small game text reliably (dark text on white). */
-export function prepareForOcr(png: Buffer, filter: OcrFilter = 'none', scale = 3): Buffer {
-  const src = PNG.sync.read(png);
-  const out = new PNG({ width: src.width * scale, height: src.height * scale });
-  const tone = filters[filter];
-  for (let y = 0; y < out.height; y++) {
-    for (let x = 0; x < out.width; x++) {
-      const si = (Math.floor(y / scale) * src.width + Math.floor(x / scale)) * 4;
-      const value = tone(src.data[si], src.data[si + 1], src.data[si + 2]);
-      const di = (y * out.width + x) * 4;
-      out.data[di] = out.data[di + 1] = out.data[di + 2] = value;
-      out.data[di + 3] = 255;
-    }
-  }
-  return PNG.sync.write(out);
 }
 
 /**

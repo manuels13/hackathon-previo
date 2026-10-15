@@ -44,8 +44,6 @@ export interface PreSpinReading {
   spinButton: NormPoint;
 }
 
-export type SpinState = 'spinning' | 'idle' | 'unknown';
-
 export interface PostSpinReading {
   balance: number;
   /** Amount credited by the spin just finished; 0 when nothing was won. */
@@ -67,11 +65,6 @@ const PRE_SPIN = `Read this slot game screen before a spin and return:
 - wager: the current bet per spin (labels like BET, APUESTA, TOTAL BET). Ignore buy-feature or ante prices.
 - spin_button: centre of the main button that starts a spin (usually a large round button with circular arrows),
   with x and y normalised to 0..1000 of the image width and height.`;
-
-const STATE = `Is the slot game in this screenshot currently spinning or idle?
-Return {"state": "spinning"|"idle"|"unknown"}.
-- "spinning": reels/symbols are moving, blurred, falling or cascading, or a win animation is still playing.
-- "idle": symbols are static and the game waits for the next bet (spin button available).`;
 
 const POST_SPIN = `The spin has finished. Read the result and return:
 {"balance": number|null, "payout": number|null, "currency": string|null}
@@ -165,11 +158,6 @@ export class VlmClient {
       throw new Error(`VLM returned an invalid spin button position: ${JSON.stringify(button)}`);
     }
     return { balance: r.balance, currency: r.currency, wager: r.wager, spinButton: { x: button.x, y: button.y } };
-  }
-
-  async readSpinState(png: Buffer): Promise<SpinState> {
-    const { state } = await this.ask(png, STATE);
-    return state === 'spinning' || state === 'idle' ? state : 'unknown';
   }
 
   async readPostSpin(png: Buffer): Promise<PostSpinReading> {

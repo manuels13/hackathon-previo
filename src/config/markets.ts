@@ -25,10 +25,8 @@ export interface MarketConfig {
   casinoPath: string;
   /** Expected language of what the player sees. */
   language: Language;
-  /** Tesseract language packs used for OCR. */
-  ocrLang: string;
   currency: 'EUR';
-  /** Ways the currency may be displayed (and misread by OCR). */
+  /** Ways the currency may be displayed (and read by the VLM). */
   currencyMarks: RegExp;
   /** Betsson's own site (outside the game), which is regular DOM. */
   shell: {
@@ -42,9 +40,13 @@ export interface MarketConfig {
     /** Opens the balance dropdown on pages where the balance is hidden behind one. */
     balanceToggle?: LocatorFn;
     balance: LocatorFn;
-    playReal: LocatorFn;
     /** Dialogs that can stand between the game page and the game, in any order. */
     gameEntryDialogs: EntryDialog[];
+    /**
+     * API the site calls to decide which entry dialog to show. Dialogs are watched for at least until
+     * it answers, since they can appear seconds after the page has loaded.
+     */
+    entryStateApi?: RegExp;
     /** Candidate iframes for the game (the largest visible one is used). */
     gameFrame: LocatorFn;
     /** Non-blocking panels/dialogs to close when they show up (best effort). */
@@ -65,7 +67,6 @@ export const markets: Record<MarketId, MarketConfig> = {
     ownHosts: /(^|\.)betsson\.es$/,
     casinoPath: '/casino',
     language: 'es',
-    ocrLang: 'spa+eng',
     currency: 'EUR',
     currencyMarks: /€|EUR|\bE(?=\s?\d)/,
     shell: {
@@ -80,10 +81,12 @@ export const markets: Record<MarketId, MarketConfig> = {
       balanceToggle: (p) => p.locator('[data-test-id="in-game-balance-button"]'),
       balance: (p) =>
         p.locator('[data-test-id="balance-button"], [data-test-id="user-summary-balance"]').filter({ visible: true }).first(),
-      // Verified: no extra "play for real" step on the game page, logged-in players go straight to Real Play.
-      playReal: (p) => p.getByRole('button', { name: /^(jugar|jugar ahora|jugar con dinero real)$/i }).first(),
+      // Verified: there is no extra "play for real" step; logged-in players go straight to Real Play.
       // All iframes on the game page; BetssonShell picks the largest visible one as the game.
       gameFrame: (p) => p.locator('iframe'),
+      // Verified in the site's traffic: the gaming-session check answers ~10 s after the game page loads,
+      // and only then the dialogs below show up.
+      entryStateApi: /\/api\/v1\/gaming\/dgoj\/Session\/Check$/,
       // Verified on the live site (DGOJ rules). They show up depending on the account's session state.
       gameEntryDialogs: [
         {

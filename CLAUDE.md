@@ -4,116 +4,85 @@ Guía para Claude Code en este repositorio: **Malackathon 2026 — Betsson "Inte
 
 ## Objetivo
 
-Prueba de concepto que navega el casino de Betsson, lanza un juego en **Real Play** y valida dos escenarios **a partir de lo que el jugador ve en pantalla**. El juego va en iframe/canvas, así que no hay DOM del juego que inspeccionar. Un clic en "Spin" NO es prueba de nada: hay que verificar la reacción visible del juego.
+Prueba de concepto que entra en betsson.es, abre un juego en **Real Play** y valida los escenarios del reto **a partir de lo que el jugador ve**. El juego va en iframe/canvas, sin DOM utilizable: un clic en "Spin" no prueba nada, hay que verificar la reacción visible.
 
-El reto pide Pragmatic Play, pero **se valora mucho que la solución escale a otros proveedores**. Ninguna lógica de los escenarios puede depender del proveedor.
+Se valora mucho que **escale a otros proveedores** además de Pragmatic Play: los escenarios no dependen del proveedor.
 
-Plazo: build window el 15/10/2026 10:15–20:00. Finalistas presentan 7 min el 16/10.
+## Enfoque actual
 
-## Mercado: solo betsson.es
+1. **Login a mano en Chrome con CDP.** Betsson bloquea los logins hechos desde ventanas automatizadas. La persona abre Chrome con `--remote-debugging-port=9222` y un perfil propio (`chrome-betsson`), inicia sesión y los tests se conectan con `CDP_URL`: abren y cierran solo sus pestañas. La sesión de Betsson dura unos 19 minutos y se renueva con el uso.
+2. **Shell de Betsson por DOM** (`BetssonShell`): lobby, saldo de la cabecera y diálogos regulatorios previos al juego (aviso de "sesión hace menos de 60 min" y límites DGOJ), resueltos en cualquier orden.
+3. **Juego por visión**:
+   - **VLM** (OpenRouter, API compatible con OpenAI): lee saldo, moneda, apuesta y posición del botón de spin antes del spin, y saldo y premio después. Solo **2 llamadas por spin**.
+   - **jimp** marca el botón con un anillo rojo como evidencia antes del clic.
+   - **Comparación de píxeles local** (gratis): detecta si el juego ha cargado (pasa a tener color), si los rodillos se mueven y si la pantalla se ha quedado quieta.
+4. **Testigos independientes** que contrastan lo que lee el VLM:
+   - **Tráfico del servidor del proveedor** (`RoundRecorder` y el analizador del proveedor): apuesta (`c×l`), premio (`tw`), saldos y cierre de la ronda. Marca exactamente el fin del spin, así que no hacen falta capturas de sondeo.
+   - **Respuestas que la propia web de Betsson carga en el lobby**: `/api/v2/wallet/balance` y el tiempo de sesión restante. Solo se leen, sin peticiones propias ni tokens.
 
-| Mercado | URL | Idioma | Moneda |
-| --- | --- | --- | --- |
-| `es` | https://www.betsson.es | Español | EUR |
-
-- **No se trabaja en betsson.com.** Además, desde una IP española redirige a .es.
-- La abstracción de mercado (`src/config/markets.ts`) se mantiene para no acoplar el código a .es.
-- **Regulación DGOJ:** es probable que antes de jugar a slots aparezcan límites de sesión o avisos de juego responsable. Se modelan como pasos explícitos (`shell.prompts`).
-- **Sin sesión no hay modo demo.** La página del juego muestra "Para jugar a este juego debes iniciar sesión". Calibrar exige credenciales.
-- **Geolocalización:** los runners de GitHub Actions están en EE. UU. y puede que .es los bloquee. Comprobarlo pronto; la alternativa es un runner self-hosted con IP española. No intentar evadir controles de acceso.
-- **Importes:** `src/utils/money.ts` deduce el separador decimal del propio texto (la cifra que termina en `[.,]\d{2}`), porque el shell escribe `1.234,56 €` y el juego puede escribir `€1,234.56`. Siempre en céntimos (enteros).
+**OCR descartado**: se eliminó tesseract y la calibración de zonas del HUD.
 
 ## Arquitectura: mercado × proveedor × juego
 
 | Capa | Archivo | Contiene |
 | --- | --- | --- |
-| Mercado | `src/config/markets.ts` | URL, idioma, moneda, selectores del shell de Betsson (login, saldo, avisos) |
-| Proveedor | `src/providers/<proveedor>.ts` | Etiquetas del HUD y mensaje de saldo insuficiente **por idioma**, y perfil visual por defecto: tecla de spin, posición del botón, regiones, umbrales |
-| Juego | `src/games/catalog.ts` | id, nombre, proveedor, ruta por mercado y solo lo que el título haga distinto de su proveedor |
+| Mercado | `src/config/markets.ts` | URL, idioma, moneda, selectores del shell, diálogos de entrada al juego |
+| Proveedor | `src/providers/<proveedor>.ts` | Clic de la intro, zona de rodillos y umbrales, mensaje de saldo insuficiente por idioma y analizador de tráfico (opcional) |
+| Juego | `src/games/catalog.ts` | id, nombre, proveedor, ruta por mercado y diferencias respecto a su proveedor |
 
-- `resolveGame()` combina proveedor y juego. Los escenarios reciben un `ResolvedGame` y no saben de qué proveedor es.
-- Playwright genera un proyecto por mercado y juego (`es-sweet-bonanza`, `es-starburst`). Añadir un juego al catálogo crea su proyecto automáticamente; para CI hay que añadirlo también a la matriz del workflow.
-- **Añadir un proveedor:** crear `src/providers/x.ts`, añadir un juego en `catalog.ts`, calibrar con `npm run calibrate`. Sin tocar escenarios.
+**Añadir un proveedor**: crear `src/providers/x.ts`, añadir el juego al catálogo y (opcional) escribir su `TrafficParser`. Sin analizador, la ronda se juzga solo por pantalla y cartera.
 
-Juegos actuales: **Sweet Bonanza** (Pragmatic Play) y **Starburst** (NetEnt).
+Juegos: **Sweet Bonanza** (Pragmatic, verificado) y **Starburst** (NetEnt, sin calibrar ni probar).
 
-### Cómo se ve el juego (sin DOM)
-- **Iframe del juego:** el iframe visible más grande de la página. Hay otros, como el antifraude de group-ib.
-- **Saldo, apuesta y premio:** OCR (tesseract.js) sobre la región `hud`, o el frame entero si no hay región. Se busca la etiqueta del idioma y se lee el importe que la sigue, en la misma línea o en la de debajo.
-- **Spin:** se prueban los disparadores en orden (`spinKey` tras clicar en `focusPoint`, luego `spinButton`). Se da por empezado cuando cambia más de `spinStartDiff` de los píxeles de los rodillos.
-- **Spin terminado:** los rodillos quietos (cambio < `stableDiff`) durante `stableForMs`.
-- Las esperas son condiciones visuales con timeout, nunca `sleep` como prueba de que algo ocurrió.
-- **Pendiente si hay API key:** un modelo de visión como respaldo para localizar controles y leer el HUD en proveedores sin perfil calibrado.
-
-## Escenarios
-
-### Escenario 1 — Spin completado en Real Play (cuenta `funded`)
-Checks: moneda del mercado · crédito del juego = saldo Betsson · spin empezó · spin terminó · apuesta mostrada = apuesta usada · saldo del juego coherente · saldo Betsson: `después = antes − apuesta + premio`.
-
-### Escenario 2 — Saldo insuficiente (cuenta `empty`)
-Checks: moneda del mercado · se muestra el mensaje de saldo insuficiente · el mensaje está en el idioma esperado (no coincide con los patrones de otros idiomas) · spin rechazado · saldo del juego sin cambios · saldo Betsson sin cambios.
+### Tráfico de Pragmatic (verificado en una ronda real)
+`POST /gs2c/ge/v3/gameService`, formularios url-encoded:
+- `doSpin`: la petición lleva `c` (moneda) y `l` (líneas). Apuesta = `c×l`, ×1,25 si `bl=1` (ante).
+- Respuestas: `balance`, `tw` (premio acumulado) y `na` (siguiente acción).
+- **Ronda cerrada = `na=s` y sin `rs=t`.** La primera respuesta de una cascada ya trae `na=s`, pero con `rs=t` (cascada pendiente).
 
 ## Estructura
 
 ```
-src/config/markets.ts      # mercado (.es)
-src/config/credentials.ts  # BETSSON_ES_<FUNDED|EMPTY>_<USER|PASS> desde env; ruta de la sesión guardada
-src/providers/             # types.ts, pragmatic.ts, netent.ts
-src/games/catalog.ts       # catálogo de juegos + resolveGame()
-src/pages/BetssonShell.ts  # lobby, login, saldo Betsson, abrir juego, localizar iframe
-src/pages/GameFrame.ts     # juego en canvas: capturas, OCR del HUD, spin y detección de movimiento
-src/vision/                # ocr.ts (tesseract.js), image.ts (recorte + pixelmatch)
-src/report/                # Checks (soft checks con evidencia) y ChecksReporter (report/checks.md + job summary)
-tests/auth.setup.ts        # login por cuenta, SIN trace/vídeo; se salta las cuentas sin credenciales
-tests/scenario1-*.spec.ts, tests/scenario2-*.spec.ts
-tests/calibrate.spec.ts    # capturas + texto OCR de cada región para ajustar perfiles
-tests/unit/                # tests puros (parser de importes)
+src/config/      markets.ts (mercado .es), credentials.ts (env, sesiones, cabeceras extra solo a hosts de Betsson)
+src/providers/   types.ts, pragmatic.ts (+ analizador de tráfico), netent.ts
+src/games/       catalog.ts + resolveGame()
+src/pages/       BetssonShell.ts (DOM de Betsson), GameFrame.ts (iframe: captura, clic, entrar al juego)
+src/flows/       vlmSpin.ts: los 5 pasos del spin guiado por VLM
+src/network/     RoundRecorder.ts: rondas tal como las liquida el servidor del proveedor
+src/vision/      vlm.ts (cliente VLM con reintentos y modelos de reserva), annotate.ts (anillo), image.ts (recorte, diff, color)
+src/report/      Checks (comprobaciones con evidencia), ChecksReporter (report/checks.md + job summary)
+src/utils/       money.ts (parseCents)
+tests/           auth.setup.ts, enter-game.spec.ts, scenario1-completed-spin.spec.ts, fixtures.ts, unit/
 ```
 
 ## Comandos
 
 ```bash
-npm run test:unit                                  # tests unitarios, sin red
-npm run test:sweet-bonanza                         # ambos escenarios con Sweet Bonanza
-npm run test:starburst                             # ambos escenarios con Starburst
-npm test                                           # todos los juegos
-npm run calibrate -- --project=es-sweet-bonanza    # navegador visible + capturas/OCR por región
-npm run report                                     # informe HTML (report/html)
+npm run test:unit   # tests unitarios: importes, anillo, analizador de tráfico con una ronda real grabada
+npm run game        # entra en Sweet Bonanza y deja la pestaña abierta en el juego (sin spins)
+npm run scenario1   # escenario 1 completo con Sweet Bonanza (spin real con la apuesta configurada en el juego)
+npm run report      # informe HTML
 npm run typecheck
 ```
 
-`HEADED=1` para ver el navegador. El resumen pass/fail queda en `report/checks.md`. El escenario cuya cuenta no tenga credenciales en `.env` se marca como skipped.
+Requisitos: Chrome abierto con el puerto 9222 y la sesión iniciada; en `.env`: `CDP_URL`, `BETSSON_ES_FUNDED_USER/PASS`, `BETSSON_ES_EXTRA_HEADERS`, `VLM_BASE_URL`, `VLM_API_KEY` y `VLM_MODEL`.
 
-## Estado de calibración
+## Pendiente
 
-- **Verificado en el sitio real:** cookies, formulario de login (`input[name=email|password]`), rutas de Sweet Bonanza y Starburst, y que el juego se carga en la propia página del juego.
-- **Sin verificar** (necesita sesión): selector de saldo, marcador de sesión iniciada, botón de dinero real, diálogos DGOJ, y todos los perfiles visuales de proveedor.
-
-Las suposiciones pendientes están marcadas con `TODO(calibrate)`.
+- **Escenario 2 (saldo insuficiente)**: hay que rehacerlo con el VLM (mensaje e idioma) y la red (spin rechazado). Necesita la cuenta sin saldo.
+- **CI**: GitHub Actions no puede usar el Chrome de una persona. Opciones: un runner self-hosted con el Chrome abierto, o login automático si las cabeceras de los mentores lo permiten (sin confirmar).
+- Calibrar Starburst (NetEnt).
+- Modelos VLM gratis: OpenRouter tiene 50 peticiones al día y los proveedores se saturan a ratos (429 o respuestas vacías). El cliente reintenta y cambia de modelo.
 
 ## Seguridad — no negociable
 
-- **Ninguna credencial ni secreto en el repo, informes, capturas, vídeos ni presentación.** Credenciales solo vía `.env` (gitignored) o GitHub Secrets. `.env.example` sin valores.
-- El login va en un proyecto aparte sin trace, vídeo ni capturas, porque el trace de Playwright registraría la contraseña tecleada.
-- `.auth/` (sesiones guardadas) nunca se sube como artefacto.
-- Las capturas de página completa enmascaran `market.shell.sensitive`.
-- Una API key de visión/IA, si se usa, también va como secret.
-
-## Entregables
-
-1. **Repo GitHub**: código organizado, config por mercado y proveedor, sin secretos.
-2. **Workflow** (`.github/workflows/game-validation.yml`): matriz por proyecto `<mercado>-<juego>`, publica los informes en GitHub Pages.
-3. **Informe y evidencias**: pass/fail por check, por escenario, mercado y juego, con capturas, trace y vídeo.
-4. **Presentación** (finalistas): 7 min, demo funcionando + decisiones técnicas. Enseñar dos proveedores con el mismo código.
-
-## Criterios de evaluación (peso)
-
-Escenarios funcionan 30 · "Ve como un jugador" 20 · Código y arquitectura 15 · Informe y evidencias 15 · Workflow GitHub 10 · Demo 10 · Bonus hasta +10.
-
-Prioridad: primero que los dos escenarios pasen con Sweet Bonanza y con evidencia; después, el segundo proveedor.
+- **Ningún secreto en el repo, informes, capturas, vídeos ni presentación.** Todo en `.env` (ignorado) o en GitHub Secrets.
+- **Las cabeceras de los mentores** solo se envían a hosts de Betsson: si se envían a Pragmatic, rompen su CORS y el juego no carga. Nunca deben ir al repo.
+- **El trace** no se genera en CI, porque guarda cabeceras y cookies de sesión. En local sí.
+- **Las capturas de página** tapan `[data-cs-mask], [data-hj-suppress]` (nombre del titular). Al VLM solo se le envía la captura del juego.
+- **El tráfico solo se guarda decodificado** (números). Nunca los cuerpos crudos: `currentcustomer` contiene datos personales.
 
 ## Convenciones
 
-- Un check fallido no aborta el escenario si se puede seguir recogiendo evidencia; el informe muestra todos los checks.
-- Las evidencias se adjuntan con nombre descriptivo; las de checks llevan prefijo `PASS`/`FAIL`.
-- Documentación en español; identificadores y comentarios de código en inglés.
+- Las comprobaciones no abortan el escenario; el informe muestra todas. Si una lectura del VLM falla después del spin, se siguen evaluando las comprobaciones de servidor y cartera.
+- Documentación en español; código y comentarios en inglés.

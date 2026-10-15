@@ -5,7 +5,6 @@ import { getMarket, type MarketConfig, type MarketId } from '../src/config/marke
 import { type ResolvedGame, resolveGame } from '../src/games/catalog';
 import { BetssonShell } from '../src/pages/BetssonShell';
 import { Checks } from '../src/report/Checks';
-import { terminateOcr } from '../src/vision/ocr';
 
 /**
  * CDP_URL=http://127.0.0.1:9222 attaches to a Chrome that a person started with
@@ -31,7 +30,6 @@ interface Fixtures {
 }
 
 interface WorkerFixtures {
-  ocr: void;
   cdpBrowser: Browser;
 }
 
@@ -94,10 +92,6 @@ export const test = base.extend<Fixtures & Options, WorkerFixtures>({
     await use(checks);
     await checks.attachSummary();
   },
-  ocr: [async ({}, use) => {
-    await use();
-    await terminateOcr();
-  }, { scope: 'worker', auto: true }],
 });
 
 export { expect } from '@playwright/test';

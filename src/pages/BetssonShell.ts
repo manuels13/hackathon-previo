@@ -54,9 +54,12 @@ export class BetssonShell {
     let step = 'open login dialog';
     try {
       await this.ui.openLogin(this.page).click();
+      // Clear first: the browser may have autofilled a saved email, and typing would append to it.
       step = 'type username';
+      await this.ui.username(this.page).fill('');
       await this.ui.username(this.page).pressSequentially(credentials.username, { delay: 40 });
       step = 'type password';
+      await this.ui.password(this.page).fill('');
       await this.ui.password(this.page).pressSequentially(credentials.password, { delay: 40 });
       step = 'submit';
       await this.ui.submitLogin(this.page).click();
@@ -102,11 +105,16 @@ export class BetssonShell {
    * Gets through the market's DOM dialogs between the game page and the game, in whatever order
    * they appear. Returns the names of the dialogs handled. Done once none has shown up for `quietMs`.
    */
-  async passGameEntryDialogs(timeoutMs = 45_000, quietMs = 4_000): Promise<string[]> {
+  async passGameEntryDialogs(siteDecided: Promise<unknown>, timeoutMs = 60_000, quietMs = 4_000): Promise<string[]> {
     const handled: string[] = [];
     const deadline = Date.now() + timeoutMs;
+    // The quiet period only counts once the site has checked the gaming session: before that, "no
+    // dialog yet" means nothing (the recent-session warning shows up ~10 s after the page loads).
+    let decided = false;
+    void siteDecided.finally(() => (decided = true));
     let quietSince = Date.now();
-    while (Date.now() < deadline && Date.now() - quietSince < quietMs) {
+    while (Date.now() < deadline && !(decided && Date.now() - quietSince >= quietMs)) {
+      if (!decided) quietSince = Date.now();
       const entry = await this.visibleEntryDialog();
       if (!entry) {
         await this.page.waitForTimeout(500);
@@ -149,28 +157,17 @@ export class BetssonShell {
     };
   }
 
-  /**
-   * Reads the wallet balance after a game round. The header may refresh with a delay, so it is
-   * polled until it reaches `expected`; if it never does, the last reading is returned as is and
-   * the check reports the mismatch.
-   */
-  async readBalanceSettled(expected: number | null, timeoutMs = 30_000): Promise<BalanceReading> {
-    const deadline = Date.now() + timeoutMs;
-    let reading = await this.readBalance();
-    while (reading.cents !== expected && Date.now() < deadline) {
-      await this.page.waitForTimeout(2_000);
-      reading = await this.readBalance();
-    }
-    return reading;
-  }
-
   async launchGame(game: ResolvedGame): Promise<GameFrame> {
+    const { entryStateApi } = this.ui;
+    const siteDecided = entryStateApi
+      ? this.page
+          .waitForResponse((r) => entryStateApi.test(new URL(r.url()).pathname), { timeout: 30_000 })
+          .catch(() => null)
+      : Promise.resolve(null);
     await this.page.goto(this.market.baseUrl + game.path);
-    this.entryDialogsHandled = await this.passGameEntryDialogs();
-    const playReal = this.ui.playReal(this.page);
-    if (await playReal.isVisible({ timeout: 10_000 }).catch(() => false)) await playReal.click();
+    this.entryDialogsHandled = await this.passGameEntryDialogs(siteDecided);
     await this.dismissPrompts();
-    return new GameFrame(this.page, await this.findGameFrame(), this.market, game);
+    return new GameFrame(this.page, await this.findGameFrame(), game);
   }
 
   /**
