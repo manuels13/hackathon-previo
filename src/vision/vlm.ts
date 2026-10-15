@@ -42,6 +42,13 @@ export interface PreSpinReading {
   /** Bet that the next spin will use, in currency units. */
   wager: number;
   spinButton: NormPoint;
+  /** The "−" button that lowers the bet, if visible. */
+  betDecrease?: NormPoint;
+}
+
+/** The game is still on its intro screen: where to click to continue to the game. */
+export interface IntroScreen {
+  introContinue: NormPoint;
 }
 
 /** What the player sees right after trying to spin without enough money. */
@@ -66,7 +73,12 @@ const SYSTEM = [
 ].join(' ');
 
 const PRE_SPIN = `Read this slot game screen before a spin and return:
-{"balance": number|null, "currency": string|null, "wager": number|null, "spin_button": {"x": number, "y": number}|null}
+{"balance": number|null, "currency": string|null, "wager": number|null, "spin_button": {"x": number, "y": number}|null, "intro_continue": {"x": number, "y": number}|null, "bet_decrease": {"x": number, "y": number}|null}
+- intro_continue: only if this is an intro/splash screen shown before playing (title art, feature description,
+  a "continue"/play arrow button, a "don't show again" checkbox) instead of the playable game with its credit and bet:
+  centre of the button that continues to the game, normalised to 0..1000. Otherwise null.
+- bet_decrease: centre of the button that lowers the bet (usually a "−" next to the spin button), normalised
+  to 0..1000; null if not visible.
 - balance: the player's credit/balance shown by the game (labels like CREDIT, CRÉDITO, BALANCE, SALDO).
 - currency: currency code or symbol shown next to the amounts.
 - wager: the current bet per spin (labels like BET, APUESTA, TOTAL BET). Ignore buy-feature or ante prices.
@@ -171,16 +183,22 @@ export class VlmClient {
     return parseJsonObject(content);
   }
 
-  async readPreSpin(png: Buffer): Promise<PreSpinReading> {
+  /** Reads the game screen before a spin; if the game is still on its intro, says where to continue. */
+  async readPreSpin(png: Buffer): Promise<PreSpinReading | IntroScreen> {
     const r = await this.ask(png, PRE_SPIN);
-    const button = r.spin_button as { x?: unknown; y?: unknown } | null;
-    if (!isNumber(r.balance) || !isNumber(r.wager) || typeof r.currency !== 'string' || !button) {
+    const point = (v: unknown): NormPoint | null => {
+      const p = v as { x?: unknown; y?: unknown } | null;
+      return p && isNumber(p.x) && isNumber(p.y) && p.x >= 0 && p.x <= 1000 && p.y >= 0 && p.y <= 1000 ? { x: p.x, y: p.y } : null;
+    };
+    const intro = point(r.intro_continue);
+    if (intro && !isNumber(r.balance)) return { introContinue: intro };
+    const button = point(r.spin_button);
+    if (!isNumber(r.balance) || !isNumber(r.wager) || typeof r.currency !== 'string' || !r.spin_button) {
       throw new Error(`VLM could not read the pre-spin screen: ${JSON.stringify(r)}`);
     }
-    if (!isNumber(button.x) || !isNumber(button.y) || button.x < 0 || button.x > 1000 || button.y < 0 || button.y > 1000) {
-      throw new Error(`VLM returned an invalid spin button position: ${JSON.stringify(button)}`);
-    }
-    return { balance: r.balance, currency: r.currency, wager: r.wager, spinButton: { x: button.x, y: button.y } };
+    if (!button) throw new Error(`VLM returned an invalid spin button position: ${JSON.stringify(r.spin_button)}`);
+    const betDecrease = point(r.bet_decrease) ?? undefined;
+    return { balance: r.balance, currency: r.currency, wager: r.wager, spinButton: button, betDecrease };
   }
 
   async readSpinAttempt(png: Buffer): Promise<SpinAttemptReading> {

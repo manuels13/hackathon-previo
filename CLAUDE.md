@@ -28,6 +28,12 @@ Se valora mucho que **escale a otros proveedores** además de Pragmatic Play: lo
 - Tras el clic se muestrea la pantalla durante 6 s y se guarda el fotograma que más cambia: es el mensaje del juego.
 - Sweet Bonanza rechaza el spin en el propio cliente: no se envía ningún `doSpin`. Muestra "Fondos insuficientes para realizar esta apuesta. Haga un depósito en su cuenta o reduzca el nivel de la apuesta." con el botón ACEPTAR. Si el servidor rechazara (`nomoney=1`), el analizador lo marca como `rejected`.
 
+### Prueba negativa (inyección de fallo)
+`tests/fault-injection.spec.ts` manipula con `page.route` las respuestas del servidor del juego (`src/network/faultInjection.ts`) para que el juego muestre 5,00 € más que la cartera de Betsson.
+- La comprobación "Game credit on screen matches Betsson balance" lo detecta leyendo la pantalla con el VLM.
+- `test.fail()` marca ese fallo como esperado: la suite sigue en verde y el error "Failed checks: …" aparece en el trace y en el informe.
+- No hace spin. Verificado: pantalla 102,35 frente a cartera 97,35, diferencia 5,00.
+
 **OCR descartado**: se eliminó tesseract y la calibración de zonas del HUD.
 
 ## Arquitectura: mercado × proveedor × juego
@@ -40,13 +46,21 @@ Se valora mucho que **escale a otros proveedores** además de Pragmatic Play: lo
 
 **Añadir un proveedor**: crear `src/providers/x.ts`, añadir el juego al catálogo y (opcional) escribir su `TrafficParser`. Sin analizador, la ronda se juzga solo por pantalla y cartera.
 
-Juegos: **Sweet Bonanza** (Pragmatic Play, verificado). El foco son los juegos de Pragmatic Play: añadir otro es una entrada en el catálogo que reutiliza `pragmaticPlay` y su analizador de tráfico.
+Juegos: **Sweet Bonanza** es el juego por defecto (catálogo). **Cualquier otro juego se busca en Betsson por su nombre**, sin configurarlo: `npm run scenario1 -- "gates of olympus"` (`scripts/run.js` lo pasa como `GAME`).
+- `BetssonShell.findGame` abre el buscador de juegos del lobby, que carga el catálogo completo (`/api/v2/games?countryCode=ES`, unos 2200 juegos con nombre, `slug` y proveedor).
+- `pickGame` (`src/games/discover.ts`) elige el juego por nombre, slug o id. Falla con un mensaje claro si el nombre es ambiguo, no existe o el proveedor no está soportado.
+- La ruta del juego sale del enlace del resultado de la búsqueda.
+- Los proveedores soportados se registran por su id de Betsson en `src/providers/index.ts`.
+- Cada juego es distinto, así que el VLM resuelve lo que antes estaba calibrado para Sweet Bonanza:
+  - **Pantalla de presentación:** si la ve, devuelve dónde está el botón de continuar y el test lo pulsa (1 llamada más).
+  - **Apuesta por defecto alta:** si supera `MAX_WAGER` (1,00 € por defecto), el test pulsa "−" hasta el mínimo y vuelve a leer (1 llamada más). Si sigue por encima, no hace el spin.
+- Verificado con 12/12 en Gates of Olympus (también con un spin con premio y cascada) y en Big Bass Splash (bajando la apuesta a 0,10 €).
 
 ### Tráfico de Pragmatic (verificado en una ronda real)
 `POST /gs2c/ge/v3/gameService`, formularios url-encoded:
 - `doSpin`: la petición lleva `c` (moneda) y `l` (líneas). Apuesta = `c×l`, ×1,25 si `bl=1` (ante).
 - Respuestas: `balance`, `tw` (premio acumulado) y `na` (siguiente acción).
-- **Ronda cerrada = `na=s` y sin `rs=t`.** La primera respuesta de una cascada ya trae `na=s`, pero con `rs=t` (cascada pendiente).
+- **Ronda cerrada = `na=s` y sin `rs`.** La primera respuesta de una cascada ya trae `na=s`, pero con `rs` pendiente: `rs=t` en Sweet Bonanza, `rs=mc` en Gates of Olympus. Con premio, la ronda termina en `doCollect`.
 
 ## Estructura
 
@@ -60,7 +74,7 @@ src/network/     RoundRecorder.ts: rondas tal como las liquida el servidor del p
 src/vision/      vlm.ts (cliente VLM con reintentos y modelos de reserva), annotate.ts (anillo), image.ts (recorte, diff, color)
 src/report/      Checks (comprobaciones con evidencia), ChecksReporter (report/checks.md + job summary)
 src/utils/       money.ts (parseCents), secretInput.ts (escribe credenciales fuera del trace)
-tests/           auth.setup.ts, enter-game.spec.ts, scenario1-completed-spin.spec.ts,
+tests/           auth.setup.ts, enter-game.spec.ts, scenario1-completed-spin.spec.ts, fault-injection.spec.ts,
                  scenario2-insufficient-balance.spec.ts, fixtures.ts, unit/
 ```
 
@@ -70,7 +84,9 @@ tests/           auth.setup.ts, enter-game.spec.ts, scenario1-completed-spin.spe
 npm run test:unit   # tests unitarios: importes, anillo, analizador de tráfico con una ronda real grabada
 npm run game        # entra en Sweet Bonanza y deja la pestaña abierta en el juego (sin spins)
 npm run scenario1   # escenario 1 completo con Sweet Bonanza (spin real con la apuesta configurada en el juego)
+npm run scenario1 -- "gates of olympus"   # cualquier juego de Pragmatic, buscado en Betsson por su nombre
 npm run scenario2   # escenario 2: cambia a la cuenta sin saldo e intenta un spin (no gasta dinero)
+npm run fault       # prueba negativa: inyecta un saldo falso (+5 €) en el juego y debe detectarlo (sin spin, no gasta)
 npm run report      # informe HTML
 npm run typecheck
 ```

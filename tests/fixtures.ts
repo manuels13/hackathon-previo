@@ -18,6 +18,8 @@ interface Options {
   /** Set per Playwright project in playwright.config.ts. */
   marketId: MarketId;
   gameId: string;
+  /** Game to find on Betsson by name (GAME=... on the command line), instead of the catalog's gameId. */
+  gameQuery: string;
   /** Which test account the spec logs in with. */
   account: AccountKind;
 }
@@ -56,9 +58,12 @@ async function cdpPage(browser: Browser, use: (page: Page) => Promise<void>) {
 export const test = base.extend<Fixtures & Options, WorkerFixtures>({
   marketId: ['es', { option: true }],
   gameId: ['', { option: true }],
+  gameQuery: ['', { option: true }],
   account: ['funded', { option: true }],
   market: async ({ marketId }, use) => use(getMarket(marketId)),
-  game: async ({ gameId, marketId }, use) => use(resolveGame(gameId, marketId)),
+  // A game asked for on the command line is looked up on Betsson itself; otherwise the catalog's.
+  game: async ({ gameId, gameQuery, marketId, shell }, use) =>
+    use(gameQuery ? await shell.findGame(gameQuery) : resolveGame(gameId, marketId)),
   // Reuse the session saved by auth.setup.ts, so logins (and passwords) never appear in traces.
   // With CDP the session lives in the attached Chrome instead.
   storageState: async ({ marketId, account }, use, testInfo) => {

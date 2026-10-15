@@ -12,6 +12,8 @@ export interface VlmSpinOptions {
   evidenceDir: string;
   /** Game-server traffic: the outcome of the round is read from it. */
   recorder: RoundRecorder;
+  /** Highest wager allowed: above it the spin is not made (a new game may default to a high bet). */
+  maxWager?: number;
   startTimeoutMs?: number;
   settleTimeoutMs?: number;
   /** Called for each evidence image, e.g. to attach it to the Playwright report. */
@@ -49,10 +51,31 @@ export async function runVlmSpin(game: GameFrame, vlm: VlmClient, options: VlmSp
     await options.onEvidence?.(name, png);
   };
 
-  // 1. What the player sees before the spin: the only screenshot the VLM reads.
-  const beforeShot = await game.screenshot();
-  await evidence('before-spin', beforeShot);
-  const before = await vlm.readPreSpin(beforeShot);
+  // 1. What the player sees before the spin: the only screenshot the VLM reads (plus one per intro
+  //    screen it had to click through).
+  let { shot: beforeShot, before, vlmCalls } = await readPlayableScreen(game, vlm, evidence, 'before-spin');
+
+  // A game opened for the first time may come with a high default bet: bring it down to the minimum
+  // with the game's own "−" button, then read the screen again. Never spin above the limit.
+  if (options.maxWager !== undefined && before.wager > options.maxWager && before.betDecrease) {
+    const { x, y } = before.betDecrease;
+    await evidence('bet-decrease-marked', await markPoint(beforeShot, (x / 1000) * beforeShot.readUInt32BE(16), (y / 1000) * beforeShot.readUInt32BE(20)));
+    // More clicks than any bet ladder has steps: at the minimum the button does nothing.
+    for (let i = 0; i < 25; i++) {
+      await game.click({ x: x / 1000, y: y / 1000 });
+      await sleep(150);
+    }
+    await sleep(1_000);
+    const reread = await readPlayableScreen(game, vlm, evidence, 'before-spin-lowered-bet');
+    ({ shot: beforeShot, before } = reread);
+    vlmCalls += reread.vlmCalls;
+  }
+  if (options.maxWager !== undefined && before.wager > options.maxWager) {
+    throw new Error(
+      `The game's wager is ${before.wager.toFixed(2)}, above the ${options.maxWager.toFixed(2)} limit (MAX_WAGER): ` +
+        'the spin was not made. Lower the bet in the game or raise MAX_WAGER.',
+    );
+  }
 
   // 2. Where we are going to click. Normalised 0..1000 → screenshot pixels.
   const px = (before.spinButton.x / 1000) * beforeShot.readUInt32BE(16);
@@ -80,7 +103,33 @@ export async function runVlmSpin(game: GameFrame, vlm: VlmClient, options: VlmSp
     const settled = await waitForStill(game, reels, stableDiff, stableForMs, settleDeadline);
     await evidence('after-spin', settled ?? (await game.screenshot()));
   }
-  return { before, reelsMoved, server, vlmCalls: 1 };
+  return { before, reelsMoved, server, vlmCalls };
+}
+
+/**
+ * Screenshot of the playable game and the VLM's reading of it. A game still on its intro screen
+ * (where its "continue" button is differs per game) is clicked through where the VLM says, up to
+ * twice, so no per-game coordinates are needed.
+ */
+export async function readPlayableScreen(
+  game: GameFrame,
+  vlm: VlmClient,
+  evidence: (name: string, png: Buffer) => Promise<void>,
+  name: string,
+): Promise<{ shot: Buffer; before: PreSpinReading; vlmCalls: number }> {
+  for (let vlmCalls = 1; vlmCalls <= 3; vlmCalls++) {
+    const shot = await game.screenshot();
+    const reading = await vlm.readPreSpin(shot);
+    if (!('introContinue' in reading)) {
+      await evidence(name, shot);
+      return { shot, before: reading, vlmCalls };
+    }
+    const { x, y } = reading.introContinue;
+    await evidence('intro-continue-marked', await markPoint(shot, (x / 1000) * shot.readUInt32BE(16), (y / 1000) * shot.readUInt32BE(20)));
+    await game.click({ x: x / 1000, y: y / 1000 });
+    await sleep(3_000);
+  }
+  throw new Error('The game is still on its intro screen after clicking "continue" twice');
 }
 
 /** Waits until the region stops changing for `stillForMs`; returns a full game screenshot taken then. */

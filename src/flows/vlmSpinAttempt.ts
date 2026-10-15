@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { RoundRecorder } from '../network/RoundRecorder';
 import type { GameFrame } from '../pages/GameFrame';
 import type { GameCall } from '../providers/types';
+import { readPlayableScreen } from './vlmSpin';
 import { markPoint } from '../vision/annotate';
 import { diffRatio } from '../vision/image';
 import type { PreSpinReading, SpinAttemptReading, VlmClient } from '../vision/vlm';
@@ -55,13 +56,11 @@ export async function runSpinAttempt(game: GameFrame, vlm: VlmClient, options: S
   };
 
   // 1. What the player sees before the attempt.
-  const beforeShot = await game.screenshot();
-  await evidence('before-attempt', beforeShot);
-  const before = await vlm.readPreSpin(beforeShot);
+  const { shot: beforeShot, before, vlmCalls: preCalls } = await readPlayableScreen(game, vlm, evidence, 'before-attempt');
 
   // 2. Never click when the money is there: it would be a real paid spin, not this scenario.
   if (before.balance >= before.wager || walletBefore >= before.wager) {
-    return { before, attempted: false, after: null, reelsMoved: false, calls: [], vlmCalls: 1 };
+    return { before, attempted: false, after: null, reelsMoved: false, calls: [], vlmCalls: preCalls };
   }
 
   // 3. Mark and click the spin button.
@@ -93,5 +92,5 @@ export async function runSpinAttempt(game: GameFrame, vlm: VlmClient, options: S
 
   // 5. What the player was told.
   const after = await vlm.readSpinAttempt(reaction);
-  return { before, attempted: true, after, reelsMoved, calls: recorder?.callsSince(mark) ?? [], vlmCalls: 2 };
+  return { before, attempted: true, after, reelsMoved, calls: recorder?.callsSince(mark) ?? [], vlmCalls: preCalls + 1 };
 }

@@ -8,9 +8,10 @@
     "typecheck": "tsc",
     "report": "playwright show-report report/html",
     "test:sweet-bonanza": "playwright test --project=es-sweet-bonanza",
-    "game": "cross-env KEEP_OPEN=1 playwright test enter-game --project=es-sweet-bonanza",
-    "scenario1": "playwright test scenario1 --project=es-sweet-bonanza",
-    "scenario2": "playwright test scenario2 --project=es-sweet-bonanza"
+    "game": "cross-env KEEP_OPEN=1 node scripts/run.js enter-game",
+    "scenario1": "node scripts/run.js scenario1",
+    "scenario2": "node scripts/run.js scenario2",
+    "fault": "node scripts/run.js fault-injection"
   },
   "keywords": [],
   "author": "",

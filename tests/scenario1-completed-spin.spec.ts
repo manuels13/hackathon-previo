@@ -55,6 +55,7 @@ test('Scenario 1 — completed Real Play spin', async ({ page, shell, game: game
     runVlmSpin(game, new VlmClient(vlmConfig!), {
       evidenceDir: test.info().outputPath('vlm'),
       recorder,
+      maxWager: Number(process.env.MAX_WAGER ?? 1),
       onEvidence: (name, png) => checks.evidence(`Spin ${name}`, png),
     }),
   );
@@ -133,7 +134,7 @@ test('Scenario 1 — completed Real Play spin', async ({ page, shell, game: game
 
   test.info().annotations.push({
     type: 'cost',
-    description: `${spin.vlmCalls} VLM call (pre-spin screenshot only); outcome verified on HTTP traffic`,
+    description: `${spin.vlmCalls} VLM call(s) (pre-spin screenshot, plus intro screens); outcome verified on HTTP traffic`,
   });
   checks.assertAll();
 });

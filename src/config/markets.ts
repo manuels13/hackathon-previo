@@ -59,6 +59,12 @@ export interface MarketConfig {
      * it answers, since they can appear seconds after the page has loaded.
      */
     entryStateApi?: RegExp;
+    /** Betsson's game catalog, which the lobby loads when the game search opens. */
+    gameCatalogApi: RegExp;
+    openGameSearch: LocatorFn;
+    gameSearchInput: LocatorFn;
+    /** Link to a game's page among the search results, by its catalog slug. */
+    gameSearchResult: (page: Page, slug: string) => Locator;
     /** Candidate iframes for the game (the largest visible one is used). */
     gameFrame: LocatorFn;
     /** Non-blocking panels/dialogs to close when they show up (best effort). */
@@ -104,6 +110,13 @@ export const markets: Record<MarketId, MarketConfig> = {
       balance: (p) =>
         p.locator('[data-test-id="balance-button"], [data-test-id="user-summary-balance"]').filter({ visible: true }).first(),
       // Verified: there is no extra "play for real" step; logged-in players go straight to Real Play.
+      // Verified: the search loads the whole catalog (/api/v2/games?countryCode=ES, ~2200 games with
+      // name, slug and provider) and filters it in the page; results link to the game page.
+      gameCatalogApi: /\/api\/v2\/games$/,
+      openGameSearch: (p) => p.locator('[data-test-id="gaming-search-icon"], [data-test-id="gaming-search-text"]').first(),
+      gameSearchInput: (p) => p.getByPlaceholder(/b[úu]squeda de juegos/i),
+      gameSearchResult: (p, slug) =>
+        p.locator(`a[data-test-id="game-thumbnail-title"][href$="/${slug}"]`).filter({ visible: true }).first(),
       // All iframes on the game page; BetssonShell picks the largest visible one as the game.
       gameFrame: (p) => p.locator('iframe'),
       // Verified in the site's traffic: the gaming-session check answers ~10 s after the game page loads,

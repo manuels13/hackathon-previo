@@ -5,6 +5,9 @@ import { games } from './src/games/catalog';
 
 // One project per market and game (`es-sweet-bonanza`), each depending on its market's login setup.
 // Adding a game to src/games/catalog.ts adds its project here and its run in CI.
+// GAME="gates of olympus" replaces them with one project for that game, found on Betsson by name.
+const gameQuery = process.env.GAME?.trim();
+const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const marketProjects = (Object.keys(markets) as MarketId[]).flatMap((marketId) => [
   {
     name: `setup-${marketId}`,
@@ -17,20 +20,22 @@ const marketProjects = (Object.keys(markets) as MarketId[]).flatMap((marketId) =
       screenshot: 'off' as const,
     },
   },
-  ...games
-    .filter((game) => game.paths[marketId])
-    .map((game) => ({
-      name: `${marketId}-${game.id}`,
-      testMatch: /scenario\d.*\.spec\.ts|enter-game\.spec\.ts/,
-      dependencies: [`setup-${marketId}`],
-      use: { marketId, gameId: game.id },
-    })),
+  ...(gameQuery
+    ? [{ id: slug(gameQuery), use: { gameQuery } }]
+    : games.filter((game) => game.paths[marketId]).map((game) => ({ id: game.id, use: { gameId: game.id } }))
+  ).map((game) => ({
+    name: `${marketId}-${game.id}`,
+    testMatch: /scenario\d.*\.spec\.ts|enter-game\.spec\.ts|fault-injection\.spec\.ts/,
+    dependencies: [`setup-${marketId}`],
+    use: { marketId, ...game.use },
+  })),
 ]);
 
 /** Custom options consumed by tests/fixtures.ts. */
 interface ProjectOptions {
   marketId: MarketId;
   gameId: string;
+  gameQuery: string;
 }
 
 export default defineConfig<ProjectOptions>({

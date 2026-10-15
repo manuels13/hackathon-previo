@@ -130,3 +130,21 @@ test('the recorder lists the calls after a mark and the last balance seen', asyn
   expect(recorder.callsSince(mark)).toEqual([expect.objectContaining({ kind: 'spin', rejected: true, balance: 99.48 })]);
   expect(recorder.lastBalance()).toBe(99.48);
 });
+
+// A winning Gates of Olympus round recorded on betsson.es: its pending tumble is rs=mc, not rs=t.
+const GATES_ROUND = [
+  { post: 'action=doInit', body: 'balance=97.93&na=s&c=0.10&l=20' },
+  { post: 'action=doSpin&c=0.01&l=20&bl=0', body: 'tw=0.10&w=0.10&balance=97.73&na=s&rs=mc&rs_p=0' },
+  { post: 'action=doSpin&c=0.01&l=20&bl=0', body: 'tw=0.10&w=0.00&balance=97.73&na=c&rs_t=1' },
+  { post: 'action=doCollect', body: 'balance=97.83&na=s' },
+];
+
+test('Gates of Olympus: a tumble pending as rs=mc keeps the round open until the collect', async () => {
+  const { recorder, emit } = replay(GATES_ROUND);
+  emit(GATES_ROUND[0]);
+  await new Promise((r) => setImmediate(r));
+  const mark = recorder.mark();
+  for (const call of GATES_ROUND.slice(1)) emit(call);
+  const round = await recorder.waitForRound(mark, 2_000);
+  expect(round).toMatchObject({ wager: 0.2, balanceBefore: 97.93, balanceAfter: 97.83, payout: 0.1, calls: 3 });
+});

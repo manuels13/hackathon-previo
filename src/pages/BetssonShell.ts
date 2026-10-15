@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { type AccountKind, accountKindOf, type Credentials, getCredentials, hasCredentials } from '../config/credentials';
 import type { MarketConfig } from '../config/markets';
 import type { ResolvedGame } from '../games/catalog';
+import { type BetssonGame, pickGame } from '../games/discover';
 import { parseCents } from '../utils/money';
 import { SecretTyper } from '../utils/secretInput';
 import { GameFrame } from './GameFrame';
@@ -236,6 +237,25 @@ export class BetssonShell {
       throw new Error(`Logged in, but Betsson reports another account (${account.account}) instead of ${kind}`);
     }
     return account;
+  }
+
+  /**
+   * Finds a game on Betsson the way a player does: opens the game search, picks the game in the
+   * catalog the search loads (by name, slug or id) and follows its result to the game page.
+   * Nothing about the game is configured in the repository.
+   */
+  async findGame(query: string): Promise<ResolvedGame> {
+    await this.openLobby();
+    const catalog = this.page
+      .waitForResponse((r) => this.ui.gameCatalogApi.test(new URL(r.url()).pathname), { timeout: 30_000 })
+      .then((r) => r.json() as Promise<BetssonGame[]>);
+    await this.ui.openGameSearch(this.page).click();
+    const { game, provider } = pickGame(await catalog, query);
+    await this.ui.gameSearchInput(this.page).fill(game.name);
+    const result = this.ui.gameSearchResult(this.page, game.slug);
+    const path = await result.getAttribute('href', { timeout: 15_000 });
+    if (!path) throw new Error(`Betsson's search shows no link for "${game.name}"`);
+    return { id: game.slug, name: game.name, provider, path, visual: provider.visual };
   }
 
   async launchGame(game: ResolvedGame): Promise<GameFrame> {
