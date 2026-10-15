@@ -44,6 +44,20 @@ export interface PreSpinReading {
   spinButton: NormPoint;
 }
 
+/** What the player sees right after trying to spin without enough money. */
+export interface SpinAttemptReading {
+  /** Text of the message or pop-up shown to the player, as written on screen; null if none. */
+  message: string | null;
+  /** ISO 639-1 language of that message, e.g. "es". */
+  language: string | null;
+  /** The message tells the player they do not have enough balance/funds for the bet. */
+  insufficientBalance: boolean;
+  /** The reels are spinning or show a new result. */
+  spinPlayed: boolean;
+  balance: number | null;
+  currency: string | null;
+}
+
 const SYSTEM = [
   'You are a computer-vision system that reads screenshots of online slot games exactly as a player sees them.',
   'Answer ONLY with one JSON object, no prose, no markdown fences.',
@@ -58,6 +72,15 @@ const PRE_SPIN = `Read this slot game screen before a spin and return:
 - wager: the current bet per spin (labels like BET, APUESTA, TOTAL BET). Ignore buy-feature or ante prices.
 - spin_button: centre of the main button that starts a spin (usually a large round button with circular arrows),
   with x and y normalised to 0..1000 of the image width and height.`;
+
+const SPIN_ATTEMPT = `The player has just pressed the spin button of this slot game. Read the screen and return:
+{"message": string|null, "language": string|null, "insufficient_balance": boolean, "spin_played": boolean, "balance": number|null, "currency": string|null}
+- message: the full text of any message, pop-up or notice shown to the player, copied exactly as written; null if there is none.
+- language: ISO 639-1 code of that message's language ("es", "en"...), null if there is no message.
+- insufficient_balance: true only if the message tells the player there is not enough balance/funds/credit for the bet.
+- spin_played: true if the reels are spinning or show a win, false if the game stayed on the same screen.
+- balance: the player's credit/balance shown by the game (labels like CREDIT, CRÉDITO, BALANCE, SALDO).
+- currency: currency code or symbol shown next to the amounts.`;
 
 /** Extracts the JSON object from a model answer, tolerating stray prose or ``` fences. */
 function parseJsonObject(text: string): Record<string, unknown> {
@@ -158,5 +181,18 @@ export class VlmClient {
       throw new Error(`VLM returned an invalid spin button position: ${JSON.stringify(button)}`);
     }
     return { balance: r.balance, currency: r.currency, wager: r.wager, spinButton: { x: button.x, y: button.y } };
+  }
+
+  async readSpinAttempt(png: Buffer): Promise<SpinAttemptReading> {
+    const r = await this.ask(png, SPIN_ATTEMPT);
+    const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    return {
+      message: text(r.message),
+      language: text(r.language)?.toLowerCase() ?? null,
+      insufficientBalance: r.insufficient_balance === true,
+      spinPlayed: r.spin_played === true,
+      balance: isNumber(r.balance) ? r.balance : null,
+      currency: text(r.currency),
+    };
   }
 }

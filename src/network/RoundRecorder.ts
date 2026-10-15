@@ -47,6 +47,17 @@ export class RoundRecorder {
     return [...this.calls].reverse().find((c) => c.kind === 'session')?.session;
   }
 
+  /** Decoded game-server calls since `mark` (numbers only), e.g. for the report. */
+  callsSince(mark: number): GameCall[] {
+    return this.calls.slice(mark).map(({ at: _at, ...call }) => call);
+  }
+
+  /** Last balance the game server reported (game session, init or spin), if any. */
+  lastBalance(): number | undefined {
+    const last = [...this.calls].reverse().find((c) => c.balance !== undefined || c.session?.balance !== undefined);
+    return last?.balance ?? last?.session?.balance;
+  }
+
   /** Whether a spin request has been answered since `mark`. */
   spinSentSince(mark: number): boolean {
     return this.calls.slice(mark).some((c) => c.kind === 'spin');

@@ -56,6 +56,8 @@ export interface GameCall {
   totalWin?: number;
   /** The server is ready for a new spin: the round is over and settled. */
   roundClosed: boolean;
+  /** The server refused the call (e.g. not enough money for the stake): nothing was played. */
+  rejected?: boolean;
 }
 
 /**

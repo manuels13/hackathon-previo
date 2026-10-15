@@ -16,7 +16,7 @@ export function getCredentials(market: MarketId, account: AccountKind): Credenti
   const username = process.env[`${prefix}_USER`];
   const password = process.env[`${prefix}_PASS`];
   if (!username || !password) {
-    throw new Error(`Missing credentials: set ${prefix}_USER and ${prefix}_PASS (see .env.example)`);
+    throw new Error(`Missing credentials: set ${prefix}_USER and ${prefix}_PASS in .env`);
   }
   return { username, password };
 }
@@ -24,6 +24,18 @@ export function getCredentials(market: MarketId, account: AccountKind): Credenti
 export function hasCredentials(market: MarketId, account: AccountKind): boolean {
   const prefix = `BETSSON_${market.toUpperCase()}_${account.toUpperCase()}`;
   return Boolean(process.env[`${prefix}_USER`] && process.env[`${prefix}_PASS`]);
+}
+
+/**
+ * Which configured account a login name belongs to, compared in memory only. 'other' when it is none
+ * of them (e.g. the person's own account).
+ */
+export function accountKindOf(market: MarketId, login: string): AccountKind | 'other' {
+  for (const account of ['funded', 'empty'] as const) {
+    const username = process.env[`BETSSON_${market.toUpperCase()}_${account.toUpperCase()}_USER`];
+    if (username && username.trim().toLowerCase() === login.trim().toLowerCase()) return account;
+  }
+  return 'other';
 }
 
 /**

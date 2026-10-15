@@ -109,3 +109,24 @@ test('two rounds in a row: waitForRound only takes the one after the mark', asyn
   const round = await recorder.waitForRound(mark, 2_000);
   expect(round).toMatchObject({ balanceBefore: 99.33, balanceAfter: 99.13, payout: 0 });
 });
+
+test('a refused spin (not enough money) is decoded as rejected and charges nothing', async () => {
+  expect(parser.parse('action=doSpin&c=0.01&l=20&bl=0', 'balance=0.00&nomoney=1&na=s')).toMatchObject({
+    kind: 'spin',
+    rejected: true,
+    balance: 0,
+  });
+  expect(parser.parse('action=doSpin&c=0.01&l=20&bl=0', 'tw=0.00&balance=99.28&na=s')!.rejected).toBeUndefined();
+});
+
+test('the recorder lists the calls after a mark and the last balance seen', async () => {
+  const { recorder, emit } = replay(ROUND);
+  emit(SESSION);
+  await new Promise((r) => setImmediate(r));
+  expect(recorder.lastBalance()).toBe(99.48);
+  const mark = recorder.mark();
+  emit({ post: 'action=doSpin&c=0.01&l=20&bl=0', body: 'balance=99.48&nomoney=1&na=s' });
+  await new Promise((r) => setImmediate(r));
+  expect(recorder.callsSince(mark)).toEqual([expect.objectContaining({ kind: 'spin', rejected: true, balance: 99.48 })]);
+  expect(recorder.lastBalance()).toBe(99.48);
+});

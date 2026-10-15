@@ -38,6 +38,7 @@ const ANTE_MULTIPLIER = 1.25;
  *   doCollect response balance=99.33&na=s       (round closed: 99.48 − 0.20 + 0.05)
  * `na` is the next action the server expects: "s" means a new spin, i.e. the round is settled,
  * unless `rs=t` says a cascade is still pending.
+ * A refused spin carries `nomoney=1` (stake above the balance) or an error code, and no reels.
  */
 function parsePragmaticCall(requestBody: string, responseBody: string): GameCall {
   // SingleSessionAPI/data answers JSON when the game opens: currency, language and jurisdiction the
@@ -73,5 +74,6 @@ function parsePragmaticCall(requestBody: string, responseBody: string): GameCall
     // "na=s" alone is not enough: the first answer of a cascading spin already says na=s but carries
     // rs=t ("respin/tumble pending"); the round only ends once no tumble is left to play.
     roundClosed: response.get('na') === 's' && response.get('rs') !== 't',
+    rejected: response.get('nomoney') === '1' || (response.has('error') && response.get('error') !== '0') || undefined,
   };
 }

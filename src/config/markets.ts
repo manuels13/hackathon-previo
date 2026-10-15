@@ -7,12 +7,14 @@ type LocatorFn = (page: Page) => Locator;
 
 /**
  * A DOM dialog Betsson may show between opening a game page and the game itself (regulatory
- * session limits, responsible-gaming warnings...). `steps` are clicked in order inside the dialog.
+ * session limits, responsible-gaming warnings...). `steps` are clicked in order inside the dialog;
+ * `optionalSteps` are clicked only when the dialog shows them (it changes with the account's state).
  */
 export interface EntryDialog {
   name: string;
   dialog: LocatorFn;
   steps: ((dialog: Locator) => Locator)[];
+  optionalSteps?: ((dialog: Locator) => Locator)[];
 }
 
 /** Everything about a Betsson site that is independent of the game being tested. */
@@ -37,6 +39,16 @@ export interface MarketConfig {
     submitLogin: LocatorFn;
     /** Visible only while logged out (the header "log in" button). */
     loggedOutMarker: LocatorFn;
+    /** Opens the account menu that holds "log out". */
+    openAccountMenu: LocatorFn;
+    logout: LocatorFn;
+    /** Close button of the dialog shown after logging out (e.g. a session summary), if any. */
+    logoutSummaryClose?: LocatorFn;
+    /**
+     * API the lobby loads with the logged-in customer. Only its login name is compared, in memory, with
+     * the configured accounts to know which one is logged in; nothing from it is stored or reported.
+     */
+    customerApi: RegExp;
     /** Opens the balance dropdown on pages where the balance is hidden behind one. */
     balanceToggle?: LocatorFn;
     balance: LocatorFn;
@@ -60,6 +72,9 @@ export interface MarketConfig {
 const startButton = (dialog: Locator) =>
   dialog.getByRole('button', { name: /^iniciar sesi[óo]n$/i }).or(dialog.getByText(/^iniciar sesi[óo]n$/i)).first();
 
+/** Loss limit of the DGOJ session form: 25% of the balance, enough for a test session. */
+const lossLimit25 = (dialog: Locator) => dialog.getByRole('button', { name: /^25%/ }).first();
+
 export const markets: Record<MarketId, MarketConfig> = {
   es: {
     id: 'es',
@@ -77,6 +92,13 @@ export const markets: Record<MarketId, MarketConfig> = {
       password: (p) => p.locator('input[name="password"]'),
       submitLogin: (p) => p.getByRole('button', { name: /^iniciar sesi[óo]n$/i }).last(),
       loggedOutMarker: (p) => p.getByRole('button', { name: /^iniciar sesi[óo]n$/i }).first(),
+      // Verified logged in: the header balance opens the account menu, which ends with "Cerrar sesión".
+      openAccountMenu: (p) => p.locator('[data-test-id="balance-button"]').first(),
+      logout: (p) => p.locator('[data-test-id="site-menu-link-anchor-cerrar-sesión"]').first(),
+      // DGOJ: logging out shows "Sesión finaliza" (time played, total bets, net losses) with "Cerrar".
+      logoutSummaryClose: (p) =>
+        p.getByRole('dialog').filter({ hasText: /sesi[óo]n finaliza/i }).getByRole('button', { name: /^cerrar$/i }).first(),
+      customerApi: /\/api\/v2\/es\/currentcustomer$/,
       // Verified logged in: the lobby header shows the balance; game pages hide it in a "Saldo" dropdown.
       balanceToggle: (p) => p.locator('[data-test-id="in-game-balance-button"]'),
       balance: (p) =>
@@ -102,9 +124,12 @@ export const markets: Record<MarketId, MarketConfig> = {
           dialog: (p) => p.getByRole('dialog').filter({ hasText: /tiempo de juego/i }).first(),
           steps: [
             (d) => d.getByRole('button', { name: /^1 hora$/i }).first(),
-            (d) => d.getByRole('button', { name: /^25%/ }).first(),
+            lossLimit25,
             (d) => startButton(d),
           ],
+          // Verified with the account without balance: there is no loss limit to choose (no % buttons),
+          // only "No dispones de saldo, pero puedes crear la sesión...". The session still starts.
+          optionalSteps: [lossLimit25],
         },
       ],
       // Only dialogs seen on the live site; generic "Aceptar" matching clicked things it should not.
