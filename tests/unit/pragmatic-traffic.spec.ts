@@ -1,0 +1,65 @@
+import { EventEmitter } from 'node:events';
+import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { RoundRecorder } from '../../src/network/RoundRecorder';
+import { pragmaticPlay } from '../../src/providers/pragmatic';
+
+// A Sweet Bonanza round recorded on betsson.es (15/10/2026), reduced to the fields we read.
+// Session keys and reel data removed.
+const URL = 'https://x.example.net/gs2c/ge/v3/gameService';
+const ROUND = [
+  { post: 'action=doInit&symbol=vs20fruitsw_cv31', body: 'tw=0.00&balance=99.48&na=s&c=0.01&l=20' },
+  { post: 'action=doSpin&symbol=vs20fruitsw_cv31&c=0.01&l=20&bl=0', body: 'tw=0.05&balance=99.28&na=s&rs=t&w=0.05' },
+  { post: 'action=doSpin&symbol=vs20fruitsw_cv31&c=0.01&l=20&bl=0', body: 'tw=0.05&balance=99.28&na=c&rs_t=1&w=0.00' },
+  { post: 'symbol=vs20fruitsw_cv31&action=doCollect', body: 'balance=99.33&na=s' },
+];
+
+const parser = pragmaticPlay.traffic!;
+
+test('recognises Pragmatic game-service calls only', () => {
+  expect(parser.isGameCall(URL)).toBe(true);
+  expect(parser.isGameCall('https://www.betsson.es/api/v2/wallet/balance')).toBe(false);
+});
+
+test('decodes stake, balance, win and round state', () => {
+  const [init, spin, cascade, collect] = ROUND.map((c) => parser.parse(c.post, c.body)!);
+  expect(init).toMatchObject({ kind: 'init', balance: 99.48 });
+  expect(spin).toMatchObject({ kind: 'spin', wager: 0.2, balance: 99.28, totalWin: 0.05 });
+  expect(cascade).toMatchObject({ kind: 'spin', roundClosed: false });
+  expect(collect).toMatchObject({ kind: 'collect', balance: 99.33, roundClosed: true });
+});
+
+test('ante bet (bl=1) costs 1.25× the base stake', () => {
+  expect(parser.parse('action=doSpin&c=0.10&l=20&bl=1', 'balance=1&na=s')!.wager).toBe(2.5);
+});
+
+/** Feeds recorded calls to a RoundRecorder through a fake page that emits Playwright-like responses. */
+function replay(calls: typeof ROUND) {
+  const page = new EventEmitter() as unknown as Page;
+  const recorder = new RoundRecorder(page, parser);
+  const emit = (call: (typeof ROUND)[number]) =>
+    (page as unknown as EventEmitter).emit('response', {
+      request: () => ({ url: () => URL, postData: () => call.post }),
+      text: async () => call.body,
+    });
+  return { recorder, emit };
+}
+
+test('a spin round is the calls from the spin to the one that closes it', async () => {
+  const { recorder, emit } = replay(ROUND);
+  emit(ROUND[0]);
+  await new Promise((r) => setImmediate(r));
+  const mark = recorder.mark();
+  for (const call of ROUND.slice(1)) emit(call);
+  const round = await recorder.waitForRound(mark, 2_000);
+  expect(round).toMatchObject({ wager: 0.2, balanceBefore: 99.48, balanceAfter: 99.33, payout: 0.05, calls: 3 });
+  // The balance rule holds on the server's own numbers.
+  expect(round!.balanceBefore! - round!.wager + round!.payout).toBeCloseTo(round!.balanceAfter, 2);
+});
+
+test('no round while the server has not closed it', async () => {
+  const { recorder, emit } = replay(ROUND);
+  emit(ROUND[1]);
+  emit(ROUND[2]);
+  expect(await recorder.waitForRound(0, 500)).toBeNull();
+});

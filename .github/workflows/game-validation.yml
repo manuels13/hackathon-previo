@@ -1,0 +1,75 @@
+name: Game validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  validate:
+    name: Scenarios · ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per Playwright project (<market>-<game>); list them with `npx playwright test --list`.
+        project: [es-sweet-bonanza, es-starburst]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chrome
+      - name: Run both scenarios
+        run: npx playwright test --project=${{ matrix.project }}
+        env:
+          BETSSON_ES_FUNDED_USER: ${{ secrets.BETSSON_ES_FUNDED_USER }}
+          BETSSON_ES_FUNDED_PASS: ${{ secrets.BETSSON_ES_FUNDED_PASS }}
+          BETSSON_ES_EMPTY_USER: ${{ secrets.BETSSON_ES_EMPTY_USER }}
+          BETSSON_ES_EMPTY_PASS: ${{ secrets.BETSSON_ES_EMPTY_PASS }}
+          BETSSON_ES_EXTRA_HEADERS: ${{ secrets.BETSSON_ES_EXTRA_HEADERS }}
+      # Only the report folder is uploaded: .auth/ (saved sessions) never leaves the runner.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-${{ matrix.project }}
+          path: report/
+          retention-days: 14
+
+  publish:
+    name: Publish report
+    needs: validate
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: report-*
+          path: site
+      - name: Build index
+        run: |
+          {
+            echo '<!doctype html><meta charset="utf-8"><title>Game validation</title>'
+            echo '<h1>Intelligent Game Validation</h1><ul>'
+            for dir in site/report-*; do
+              project="${dir#site/report-}"
+              echo "<li>${project}: <a href=\"report-${project}/html/index.html\">HTML report</a> · <a href=\"report-${project}/checks.md\">checks</a></li>"
+            done
+            echo '</ul>'
+          } > site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
