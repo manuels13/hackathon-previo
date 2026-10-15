@@ -2,63 +2,51 @@ name: Betsson VLM Automated Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, feature ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # Permite ejecutar el workflow de forma manual desde GitHub Actions
+  workflow_dispatch:
 
 jobs:
   run-tests:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false # Permite que si un mercado falla, el otro termine de ejecutarse
-      matrix:
-        market: [com, pe] # Ejecuta ambos escenarios para betsson.com y betsson.pe
 
     steps:
       # 1. Descargar el código fuente del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configurar el entorno de Node.js (versión 20 por compatibilidad)
+      # 2. Configurar el entorno de Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 3. Instalar las dependencias exactas usando npm ci
+      # 3. Instalar las dependencias exactas
       - name: Install dependencies
         run: npm ci
 
-      # 4. Instalar los navegadores de Playwright necesarios en Linux
+      # 4. Instalar los navegadores de Playwright
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
-      # 5. Ejecutar los tests de Playwright inyectando el mercado y los secretos corporativos
+      # 5. Ejecutar los tests fijando el mercado a 'es'
       - name: Run Playwright Test Suite
         run: npx playwright test
         env:
-          MARKET: ${{ matrix.market }}
+          MARKET: es
           VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
           BETSSON_USERNAME_WITH_BALANCE: ${{ secrets.BETSSON_USERNAME_WITH_BALANCE }}
           BETSSON_PASSWORD: ${{ secrets.BETSSON_PASSWORD }}
 
-      # 6. Renombrar la carpeta de reportes por mercado para evitar sobreescrituras
-      - name: Rename Report Folder per Market
-        if: always()
-        run: |
-          if [ -d "report/html" ]; then
-            mv report/html report/html-${{ matrix.market }}
-          elif [ -d "playwright-report" ]; then
-            mv playwright-report report/html-${{ matrix.market }}
-          fi
-
-      # 7. Subir el reporte multimedia y evidencias como artefacto descargable
+      # 6. Subir el reporte HTML y las evidencias visuales
       - name: Upload Playwright Report Artifact
         uses: actions/upload-artifact@v4
-        if: always() # Se ejecuta siempre (éxito o fallo) para permitir la auditoría forense
+        if: always() # Se ejecuta siempre para analizar capturas y trazas aunque falle
         with:
-          name: betsson-vlm-report-${{ matrix.market }}
-          path: report/html-${{ matrix.market }}/
+          name: betsson-vlm-report-es
+          path: |
+            report/html
+            playwright-report
           retention-days: 30
