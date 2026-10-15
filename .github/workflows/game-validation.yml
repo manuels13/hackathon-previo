@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # One entry per Playwright project (<market>-<game>); list them with `npx playwright test --list`.
-        project: [es-sweet-bonanza, es-starburst]
+        project: [es-sweet-bonanza]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

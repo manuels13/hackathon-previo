@@ -44,13 +44,6 @@ export interface PreSpinReading {
   spinButton: NormPoint;
 }
 
-export interface PostSpinReading {
-  balance: number;
-  /** Amount credited by the spin just finished; 0 when nothing was won. */
-  payout: number;
-  currency: string;
-}
-
 const SYSTEM = [
   'You are a computer-vision system that reads screenshots of online slot games exactly as a player sees them.',
   'Answer ONLY with one JSON object, no prose, no markdown fences.',
@@ -66,12 +59,6 @@ const PRE_SPIN = `Read this slot game screen before a spin and return:
 - spin_button: centre of the main button that starts a spin (usually a large round button with circular arrows),
   with x and y normalised to 0..1000 of the image width and height.`;
 
-const POST_SPIN = `The spin has finished. Read the result and return:
-{"balance": number|null, "payout": number|null, "currency": string|null}
-- balance: the player's credit/balance now shown.
-- payout: the amount won by the last spin (labels like WIN, GANANCIA, PREMIO). Use 0 if the screen shows no win.
-- currency: currency code or symbol shown next to the amounts.`;
-
 /** Extracts the JSON object from a model answer, tolerating stray prose or ``` fences. */
 function parseJsonObject(text: string): Record<string, unknown> {
   const start = text.indexOf('{');
@@ -84,10 +71,13 @@ const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.is
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Rate limits (429) and provider outages (5xx) are worth retrying; anything else is a real error. */
+/**
+ * Worth trying another model: rate limits (429), overloaded or down providers (5xx) and models that
+ * no longer exist (404, e.g. a retired Gemini version). Anything else is a real error.
+ */
 const isTransient = (error: unknown) => {
   const status = (error as { status?: number }).status;
-  return status === 429 || (status !== undefined && status >= 500);
+  return status === 404 || status === 429 || (status !== undefined && status >= 500);
 };
 
 export class VlmClient {
@@ -100,23 +90,33 @@ export class VlmClient {
 
   /** Model that answered the last request, for the report. */
   lastModel: string | undefined;
+  /** Index of the model that answered last: the next request starts there. */
+  private preferred = 0;
 
+  /**
+   * A saturated free model fails over to the next one at once; only when every model failed in a
+   * round does it wait (5 s, 10 s, 20 s) and try again. The model that answers is remembered.
+   */
   private async ask(png: Buffer, prompt: string): Promise<Record<string, unknown>> {
+    const { models } = this.config;
     let lastError: unknown;
-    for (const model of this.config.models) {
-      for (let attempt = 0; attempt < 4; attempt++) {
+    for (let round = 0; round < 3; round++) {
+      for (let i = 0; i < models.length; i++) {
+        const index = (this.preferred + i) % models.length;
         try {
-          const answer = await this.askModel(model, png, prompt);
-          this.lastModel = model;
+          const answer = await this.askModel(models[index], png, prompt);
+          this.preferred = index;
+          this.lastModel = models[index];
           return answer;
         } catch (error) {
           lastError = error;
           if (!isTransient(error)) throw error;
-          await sleep(5_000 * 2 ** attempt);
+          console.log(`[vlm] ${models[index]} unavailable (${(error as { status?: number }).status}), trying the next model`);
         }
       }
+      if (round < 2) await sleep(5_000 * 2 ** round);
     }
-    throw new Error(`All VLM models are rate-limited or unavailable (${this.config.models.join(', ')}): ${String(lastError)}`);
+    throw new Error(`All VLM models are rate-limited or unavailable (${models.join(', ')}): ${String(lastError)}`);
   }
 
   private async askModel(model: string, png: Buffer, prompt: string): Promise<Record<string, unknown>> {
@@ -158,13 +158,5 @@ export class VlmClient {
       throw new Error(`VLM returned an invalid spin button position: ${JSON.stringify(button)}`);
     }
     return { balance: r.balance, currency: r.currency, wager: r.wager, spinButton: { x: button.x, y: button.y } };
-  }
-
-  async readPostSpin(png: Buffer): Promise<PostSpinReading> {
-    const r = await this.ask(png, POST_SPIN);
-    if (!isNumber(r.balance) || typeof r.currency !== 'string') {
-      throw new Error(`VLM could not read the post-spin screen: ${JSON.stringify(r)}`);
-    }
-    return { balance: r.balance, payout: isNumber(r.payout) ? r.payout : 0, currency: r.currency };
   }
 }

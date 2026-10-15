@@ -1,5 +1,5 @@
 import type { Page, Response } from '@playwright/test';
-import type { GameCall, TrafficParser } from '../providers/types';
+import type { GameCall, GameSession, TrafficParser } from '../providers/types';
 
 interface RecordedCall extends GameCall {
   at: number;
@@ -40,6 +40,11 @@ export class RoundRecorder {
   /** Position to use with waitForRound(): only calls after it count. */
   mark(): number {
     return this.calls.length;
+  }
+
+  /** Game session as the provider's server opened it (currency, language...), if seen. */
+  session(): GameSession | undefined {
+    return [...this.calls].reverse().find((c) => c.kind === 'session')?.session;
   }
 
   /** Whether a spin request has been answered since `mark`. */

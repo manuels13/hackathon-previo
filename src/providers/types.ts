@@ -35,9 +35,19 @@ export interface VisualProfile {
   stableForMs: number;
 }
 
+/** How the provider's server set up the player's game session (currency, language, rules). */
+export interface GameSession {
+  currency?: string;
+  language?: string;
+  jurisdiction?: string;
+  balance?: number;
+}
+
 /** One request/response between the game client and the provider's game server, already decoded. */
 export interface GameCall {
-  kind: 'init' | 'spin' | 'collect' | 'other';
+  kind: 'session' | 'init' | 'spin' | 'collect' | 'other';
+  /** Session settings, on the call that opens the game session. */
+  session?: GameSession;
   /** Stake of the spin, from the request (spin calls only). */
   wager?: number;
   /** Balance the server reports after this call. */

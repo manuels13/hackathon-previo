@@ -1,5 +1,4 @@
 import type { MarketId } from '../config/markets';
-import { netEnt } from '../providers/netent';
 import { pragmaticPlay } from '../providers/pragmatic';
 import type { ProviderProfile, VisualProfile } from '../providers/types';
 
@@ -28,13 +27,6 @@ export const games: GameConfig[] = [
     name: 'Sweet Bonanza',
     provider: pragmaticPlay,
     paths: { es: '/casino/tragaperras-slots/sweet-bonanza' },
-  },
-  {
-    // Second provider: shows the scenarios run unchanged on another studio's game.
-    id: 'starburst',
-    name: 'Starburst',
-    provider: netEnt,
-    paths: { es: '/casino/tragaperras-slots/starburst' },
   },
 ];
 

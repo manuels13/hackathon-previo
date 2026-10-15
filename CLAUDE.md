@@ -13,11 +13,11 @@ Se valora mucho que **escale a otros proveedores** además de Pragmatic Play: lo
 1. **Login a mano en Chrome con CDP.** Betsson bloquea los logins hechos desde ventanas automatizadas. La persona abre Chrome con `--remote-debugging-port=9222` y un perfil propio (`chrome-betsson`), inicia sesión y los tests se conectan con `CDP_URL`: abren y cierran solo sus pestañas. La sesión de Betsson dura unos 19 minutos y se renueva con el uso.
 2. **Shell de Betsson por DOM** (`BetssonShell`): lobby, saldo de la cabecera y diálogos regulatorios previos al juego (aviso de "sesión hace menos de 60 min" y límites DGOJ), resueltos en cualquier orden.
 3. **Juego por visión**:
-   - **VLM** (OpenRouter, API compatible con OpenAI): lee saldo, moneda, apuesta y posición del botón de spin antes del spin, y saldo y premio después. Solo **2 llamadas por spin**.
+   - **VLM** (OpenRouter, API compatible con OpenAI): **1 sola llamada por spin**, con la captura previa. Lee saldo, moneda, apuesta y posición del botón de spin. Después del spin no se analiza ninguna captura.
    - **jimp** marca el botón con un anillo rojo como evidencia antes del clic.
    - **Comparación de píxeles local** (gratis): detecta si el juego ha cargado (pasa a tener color), si los rodillos se mueven y si la pantalla se ha quedado quieta.
-4. **Testigos independientes** que contrastan lo que lee el VLM:
-   - **Tráfico del servidor del proveedor** (`RoundRecorder` y el analizador del proveedor): apuesta (`c×l`), premio (`tw`), saldos y cierre de la ronda. Marca exactamente el fin del spin, así que no hacen falta capturas de sondeo.
+4. **El resultado del spin se verifica con las peticiones HTTP**, contrastadas con lo que leyó el VLM antes del spin:
+   - **Tráfico del servidor del proveedor** (`RoundRecorder` y el analizador del proveedor): sesión del juego (`SingleSessionAPI/data`: moneda, idioma, jurisdicción), apuesta (`c×l`), premio (`tw`), saldos y cierre de la ronda. Marca exactamente el fin del spin.
    - **Respuestas que la propia web de Betsson carga en el lobby**: `/api/v2/wallet/balance` y el tiempo de sesión restante. Solo se leen, sin peticiones propias ni tokens.
 
 **OCR descartado**: se eliminó tesseract y la calibración de zonas del HUD.
@@ -32,7 +32,7 @@ Se valora mucho que **escale a otros proveedores** además de Pragmatic Play: lo
 
 **Añadir un proveedor**: crear `src/providers/x.ts`, añadir el juego al catálogo y (opcional) escribir su `TrafficParser`. Sin analizador, la ronda se juzga solo por pantalla y cartera.
 
-Juegos: **Sweet Bonanza** (Pragmatic, verificado) y **Starburst** (NetEnt, sin calibrar ni probar).
+Juegos: **Sweet Bonanza** (Pragmatic Play, verificado). El foco son los juegos de Pragmatic Play: añadir otro es una entrada en el catálogo que reutiliza `pragmaticPlay` y su analizador de tráfico.
 
 ### Tráfico de Pragmatic (verificado en una ronda real)
 `POST /gs2c/ge/v3/gameService`, formularios url-encoded:
@@ -44,10 +44,10 @@ Juegos: **Sweet Bonanza** (Pragmatic, verificado) y **Starburst** (NetEnt, sin c
 
 ```
 src/config/      markets.ts (mercado .es), credentials.ts (env, sesiones, cabeceras extra solo a hosts de Betsson)
-src/providers/   types.ts, pragmatic.ts (+ analizador de tráfico), netent.ts
+src/providers/   types.ts, pragmatic.ts (+ analizador de tráfico)
 src/games/       catalog.ts + resolveGame()
 src/pages/       BetssonShell.ts (DOM de Betsson), GameFrame.ts (iframe: captura, clic, entrar al juego)
-src/flows/       vlmSpin.ts: los 5 pasos del spin guiado por VLM
+src/flows/       vlmSpin.ts: spin guiado por VLM (1 llamada) y seguido por HTTP
 src/network/     RoundRecorder.ts: rondas tal como las liquida el servidor del proveedor
 src/vision/      vlm.ts (cliente VLM con reintentos y modelos de reserva), annotate.ts (anillo), image.ts (recorte, diff, color)
 src/report/      Checks (comprobaciones con evidencia), ChecksReporter (report/checks.md + job summary)
@@ -71,7 +71,6 @@ Requisitos: Chrome abierto con el puerto 9222 y la sesión iniciada; en `.env`: 
 
 - **Escenario 2 (saldo insuficiente)**: hay que rehacerlo con el VLM (mensaje e idioma) y la red (spin rechazado). Necesita la cuenta sin saldo.
 - **CI**: GitHub Actions no puede usar el Chrome de una persona. Opciones: un runner self-hosted con el Chrome abierto, o login automático si las cabeceras de los mentores lo permiten (sin confirmar).
-- Calibrar Starburst (NetEnt).
 - Modelos VLM gratis: OpenRouter tiene 50 peticiones al día y los proveedores se saturan a ratos (429 o respuestas vacías). El cliente reintenta y cambia de modelo.
 
 ## Seguridad — no negociable

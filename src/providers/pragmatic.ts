@@ -1,4 +1,4 @@
-import type { ProviderProfile } from './types';
+import type { GameCall, ProviderProfile } from './types';
 
 /**
  * Pragmatic Play. Verified on Sweet Bonanza in betsson.es: intro screen, reels area and the
@@ -20,7 +20,7 @@ export const pragmaticPlay: ProviderProfile = {
     stableForMs: 2500,
   },
   traffic: {
-    isGameCall: (url) => /\/gs2c\/ge\/v\d+\/gameService/.test(url),
+    isGameCall: (url) => /\/gs2c\/(ge\/v\d+\/gameService|SingleSessionAPI\/data)/.test(url),
     parse: parsePragmaticCall,
   },
 };
@@ -39,7 +39,22 @@ const ANTE_MULTIPLIER = 1.25;
  * `na` is the next action the server expects: "s" means a new spin, i.e. the round is settled,
  * unless `rs=t` says a cascade is still pending.
  */
-function parsePragmaticCall(requestBody: string, responseBody: string) {
+function parsePragmaticCall(requestBody: string, responseBody: string): GameCall {
+  // SingleSessionAPI/data answers JSON when the game opens: currency, language and jurisdiction the
+  // provider configured for this player, plus the balance it sees.
+  if (responseBody.trimStart().startsWith('{')) {
+    const data = JSON.parse(responseBody).data ?? {};
+    return {
+      kind: 'session',
+      session: {
+        currency: data.currencyCode ?? data.currency,
+        language: data.lang,
+        jurisdiction: data.jurisdiction,
+        balance: data.balance?.total,
+      },
+      roundClosed: false,
+    };
+  }
   const request = new URLSearchParams(requestBody);
   const response = new URLSearchParams(responseBody);
   const action = request.get('action');
@@ -48,7 +63,7 @@ function parsePragmaticCall(requestBody: string, responseBody: string) {
   const coin = number(request.get('c'));
   const lines = number(request.get('l'));
   return {
-    kind,
+    kind: kind as GameCall['kind'],
     wager:
       kind === 'spin' && coin !== undefined && lines !== undefined
         ? Math.round(coin * lines * (request.get('bl') === '1' ? ANTE_MULTIPLIER : 1) * 100) / 100
@@ -58,5 +73,5 @@ function parsePragmaticCall(requestBody: string, responseBody: string) {
     // "na=s" alone is not enough: the first answer of a cascading spin already says na=s but carries
     // rs=t ("respin/tumble pending"); the round only ends once no tumble is left to play.
     roundClosed: response.get('na') === 's' && response.get('rs') !== 't',
-  } as const;
+  };
 }

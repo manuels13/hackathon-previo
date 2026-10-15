@@ -45,7 +45,11 @@ async function cdpPage(browser: Browser, use: (page: Page) => Promise<void>) {
   } finally {
     // Only the tab this test opened is closed (KEEP_OPEN=1 leaves it for the person to carry on);
     // the person's window and session stay as they were.
-    if (!process.env.KEEP_OPEN) await page.close();
+    if (!process.env.KEEP_OPEN) {
+      // Closing the last tab would close the person's Chrome window: leave it blank instead.
+      if (context.pages().length > 1) await page.close();
+      else await page.goto('about:blank').catch(() => undefined);
+    }
   }
 }
 

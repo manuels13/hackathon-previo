@@ -63,3 +63,49 @@ test('no round while the server has not closed it', async () => {
   emit(ROUND[2]);
   expect(await recorder.waitForRound(0, 500)).toBeNull();
 });
+
+// SingleSessionAPI/data as the game received it on betsson.es, reduced to the fields we read.
+const SESSION = {
+  url: 'https://x.example.net/gs2c/SingleSessionAPI/data',
+  post: '',
+  body: JSON.stringify({
+    error: 0,
+    data: { lang: 'es', balance: { cash: 99.48, bonus: 0, total: 99.48 }, currency: 'EUR', currencyCode: 'EUR', jurisdiction: 'ES' },
+  }),
+};
+
+test('recognises the game session call', () => {
+  expect(parser.isGameCall(SESSION.url)).toBe(true);
+  expect(parser.parse(SESSION.post, SESSION.body)).toMatchObject({
+    kind: 'session',
+    session: { currency: 'EUR', language: 'es', jurisdiction: 'ES', balance: 99.48 },
+    roundClosed: false,
+  });
+});
+
+test('the recorder keeps the game session it saw', async () => {
+  const { recorder, emit } = replay(ROUND);
+  emit(SESSION);
+  await new Promise((r) => setImmediate(r));
+  expect(recorder.session()).toMatchObject({ currency: 'EUR', language: 'es' });
+});
+
+test('a losing spin is closed by its single answer, with no payout', async () => {
+  const { recorder, emit } = replay(ROUND);
+  emit(ROUND[0]);
+  await new Promise((r) => setImmediate(r));
+  const mark = recorder.mark();
+  emit({ post: 'action=doSpin&c=0.01&l=20&bl=0', body: 'tw=0.00&balance=99.28&na=s' });
+  const round = await recorder.waitForRound(mark, 2_000);
+  expect(round).toMatchObject({ wager: 0.2, balanceBefore: 99.48, balanceAfter: 99.28, payout: 0, calls: 1 });
+});
+
+test('two rounds in a row: waitForRound only takes the one after the mark', async () => {
+  const { recorder, emit } = replay(ROUND);
+  for (const call of ROUND) emit(call); // first round: 99.48 → 99.33
+  await new Promise((r) => setImmediate(r));
+  const mark = recorder.mark();
+  emit({ post: 'action=doSpin&c=0.01&l=20&bl=0', body: 'tw=0.00&balance=99.13&na=s' });
+  const round = await recorder.waitForRound(mark, 2_000);
+  expect(round).toMatchObject({ balanceBefore: 99.33, balanceAfter: 99.13, payout: 0 });
+});

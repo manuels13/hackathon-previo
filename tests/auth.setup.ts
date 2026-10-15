@@ -14,11 +14,15 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 test('logged-in session in the attached Chrome', async ({ shell, market }) => {
   test.skip(!cdpUrl, 'Only with CDP_URL');
-  if (await shell.isLoggedIn()) return;
+  // The wallet the lobby loads is the signal; it can be slow, so a miss is retried once.
+  if ((await shell.isLoggedIn()) || (await shell.isLoggedIn())) return;
+  if (!(await shell.canLogIn())) {
+    throw new Error(`Betsson did not load the account and shows no "Iniciar sesión" button: check the Chrome window at ${cdpUrl}`);
+  }
   if (!hasCredentials(market.id, 'funded')) {
     throw new Error(`The Betsson session in the Chrome at ${cdpUrl} is closed and BETSSON_ES_FUNDED_* are not set: log in by hand`);
   }
-  // isLoggedIn() left the lobby open, logged out.
+  // The lobby is open and logged out.
   await shell.login(getCredentials(market.id, 'funded'));
   if (!(await shell.isLoggedIn())) {
     throw new Error('Logged in, but Betsson did not load the account (wallet/session): check the Chrome window');

@@ -5,15 +5,13 @@ import type { GameFrame } from '../pages/GameFrame';
 import type { Region } from '../providers/types';
 import { markPoint } from '../vision/annotate';
 import { diffRatio } from '../vision/image';
-import type { PostSpinReading, PreSpinReading, VlmClient } from '../vision/vlm';
+import type { PreSpinReading, VlmClient } from '../vision/vlm';
 
 export interface VlmSpinOptions {
   /** Folder where every screenshot of the run is written. */
   evidenceDir: string;
-  /** Game-server witness of the round; without it the round end is detected from the screen only. */
-  recorder?: RoundRecorder;
-  /** Max difference accepted in the balance rule, in currency units. */
-  tolerance?: number;
+  /** Game-server traffic: the outcome of the round is read from it. */
+  recorder: RoundRecorder;
   startTimeoutMs?: number;
   settleTimeoutMs?: number;
   /** Called for each evidence image, e.g. to attach it to the Playwright report. */
@@ -21,101 +19,68 @@ export interface VlmSpinOptions {
 }
 
 export interface VlmSpinResult {
-  /** What the VLM read on screen before and after the spin. */
+  /** What the VLM read on screen before the spin: balance, currency, wager, spin button. */
   before: PreSpinReading;
-  after: PostSpinReading | null;
-  /** Why the final reading is missing, when the VLM could not answer (the round is still judged). */
-  afterError?: string;
-  /** The reels visibly moved after the click (pixel comparison). */
+  /** The reels visibly moved after the click (local pixel comparison, no VLM). */
   reelsMoved: boolean;
-  /** The screen came to rest after the round. */
-  screenSettled: boolean;
-  /** The round as the provider's server settled it (null without recorder or if it never closed). */
+  /** The round as the provider's server settled it; null if it never closed. */
   server: ServerRound | null;
-  /** On-screen rule: after = before − wager + payout, with the VLM readings. */
-  expectedBalance: number;
-  difference: number | null;
-  balanceRuleHolds: boolean;
   vlmCalls: number;
-  screenshots: number;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
- * The game interaction block:
+ * The spin, spending one VLM call:
  * 1. VLM reads balance, currency, wager and the spin button position from a screenshot
  * 2. jimp marks the spin button on that screenshot, kept as evidence
  * 3. Playwright clicks those exact coordinates
- * 4. the round is followed without asking the VLM: the reels must visibly move (pixel comparison),
- *    the provider's server must close the round (network) and the screen must come to rest
- * 5. VLM reads the final balance and payout; balance_after = balance_before − wager + payout
- *
- * Only two VLM calls per spin: the network says when the round ends, so no screenshots are spent
- * polling, and it is an independent witness of the amounts the VLM reads.
+ * 4. the reels must visibly move (local pixel comparison)
+ * 5. the outcome comes from the game server's HTTP traffic: the round is over when the server
+ *    closes it, with its stake, payout and balances. A final screenshot is kept as evidence only;
+ *    it is not sent to the VLM.
  */
 export async function runVlmSpin(game: GameFrame, vlm: VlmClient, options: VlmSpinOptions): Promise<VlmSpinResult> {
-  const { evidenceDir, recorder, tolerance = 0.01, startTimeoutMs = 10_000, settleTimeoutMs = 90_000 } = options;
+  const { evidenceDir, recorder, startTimeoutMs = 10_000, settleTimeoutMs = 90_000 } = options;
   fs.mkdirSync(evidenceDir, { recursive: true });
-  let screenshots = 0;
-  let vlmCalls = 0;
+  let shot = 0;
   const evidence = async (name: string, png: Buffer) => {
-    const file = path.join(evidenceDir, `${String(++screenshots).padStart(2, '0')}-${name}.png`);
-    fs.writeFileSync(file, png);
+    fs.writeFileSync(path.join(evidenceDir, `${String(++shot).padStart(2, '0')}-${name}.png`), png);
     await options.onEvidence?.(name, png);
   };
 
-  // 1. What the player sees before the spin.
+  // 1. What the player sees before the spin: the only screenshot the VLM reads.
   const beforeShot = await game.screenshot();
   await evidence('before-spin', beforeShot);
   const before = await vlm.readPreSpin(beforeShot);
-  vlmCalls++;
 
   // 2. Where we are going to click. Normalised 0..1000 → screenshot pixels.
-  const width = beforeShot.readUInt32BE(16);
-  const height = beforeShot.readUInt32BE(20);
-  const px = (before.spinButton.x / 1000) * width;
-  const py = (before.spinButton.y / 1000) * height;
+  const px = (before.spinButton.x / 1000) * beforeShot.readUInt32BE(16);
+  const py = (before.spinButton.y / 1000) * beforeShot.readUInt32BE(20);
   await evidence('spin-button-marked', await markPoint(beforeShot, px, py));
 
   // 3. Click the same point. Relative coordinates do not depend on the screenshot's pixel density.
   const { reels, spinStartDiff, stableDiff, stableForMs } = game.game.visual;
   const reelsBefore = await game.screenshot(reels);
-  const mark = recorder?.mark() ?? 0;
+  const mark = recorder.mark();
   await game.click({ x: before.spinButton.x / 1000, y: before.spinButton.y / 1000 });
 
-  // 4a. The game reacted: the reels move. The first moving frame is kept as evidence.
+  // 4. The game reacted on screen: the reels move.
   const startDeadline = Date.now() + startTimeoutMs;
   let reelsMoved = false;
   while (!reelsMoved && Date.now() < startDeadline) {
     reelsMoved = diffRatio(reelsBefore, await game.screenshot(reels)) >= spinStartDiff;
+    if (!reelsMoved) await sleep(100);
   }
-  if (reelsMoved) await evidence('spinning', await game.screenshot());
 
-  // 4b. The server closes the round (it answers before the animation ends)...
+  // 5. The server closes the round; then one screenshot of the settled screen for the report.
   const settleDeadline = Date.now() + settleTimeoutMs;
-  const server = recorder ? await recorder.waitForRound(mark, settleTimeoutMs) : null;
-  // ...and then the screen comes to rest, so the final reading shows the settled result.
-  const settledShot = reelsMoved ? await waitForStill(game, reels, stableDiff, stableForMs, settleDeadline) : null;
-  const screenSettled = settledShot !== null;
-
-  // 5. What the player sees after the spin, and the balance rule on those readings.
-  // The money has already moved: a VLM outage here must not hide the rest of the verification.
-  let after: PostSpinReading | null = null;
-  let afterError: string | undefined;
-  if (settledShot) {
-    await evidence('after-spin', settledShot);
-    vlmCalls++;
-    after = await vlm.readPostSpin(settledShot).catch((error) => {
-      afterError = String(error instanceof Error ? error.message : error).slice(0, 300);
-      return null;
-    });
+  const server = await recorder.waitForRound(mark, settleTimeoutMs);
+  if (reelsMoved) {
+    const settled = await waitForStill(game, reels, stableDiff, stableForMs, settleDeadline);
+    await evidence('after-spin', settled ?? (await game.screenshot()));
   }
-  const expectedBalance = round2(before.balance - before.wager + (after?.payout ?? 0));
-  const difference = after ? round2(Math.abs(after.balance - expectedBalance)) : null;
-  const balanceRuleHolds = difference !== null && difference <= tolerance;
-  return { before, after, afterError, reelsMoved, screenSettled, server, expectedBalance, difference, balanceRuleHolds, vlmCalls, screenshots };
+  return { before, reelsMoved, server, vlmCalls: 1 };
 }
 
 /** Waits until the region stops changing for `stillForMs`; returns a full game screenshot taken then. */

@@ -75,6 +75,14 @@ export class BetssonShell {
   }
 
   /** True when the current session is logged in (used to reuse a saved session). */
+  /** The lobby shows the "log in" button, i.e. the session is really closed. */
+  async canLogIn(): Promise<boolean> {
+    return this.ui
+      .loggedOutMarker(this.page)
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true, () => false);
+  }
+
   async isLoggedIn(minSecondsLeft = 0): Promise<boolean> {
     // The header can still show a logged-in layout after the session expired; the wallet and the
     // session's time to live that the site loads are the reliable signal.

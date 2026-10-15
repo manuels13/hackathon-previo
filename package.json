@@ -8,7 +8,6 @@
     "typecheck": "tsc",
     "report": "playwright show-report report/html",
     "test:sweet-bonanza": "playwright test --project=es-sweet-bonanza",
-    "test:starburst": "playwright test --project=es-starburst",
     "game": "cross-env KEEP_OPEN=1 playwright test enter-game --project=es-sweet-bonanza",
     "scenario1": "playwright test scenario1 --project=es-sweet-bonanza"
   },
