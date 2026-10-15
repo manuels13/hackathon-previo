@@ -12,26 +12,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Descargar el código fuente del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configurar el entorno de Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 3. Instalar las dependencias exactas
       - name: Install dependencies
         run: npm ci
 
-      # 4. Instalar los navegadores de Playwright
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Google Chrome & Dependencies
+        run: |
+          npx playwright install chrome
+          npx playwright install-deps chrome
 
-      # 5. Ejecutar los tests fijando el mercado a 'es'
+      # Arrancar Google Chrome en el puerto 9222 en segundo plano dentro del servidor Xvfb
+      - name: Start Background Chrome on Port 9222
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            google-chrome \
+            --remote-debugging-port=9222 \
+            --user-data-dir=/tmp/chrome-betsson \
+            --no-first-run \
+            --no-default-browser-check \
+            --disable-blink-features=AutomationControlled &
+          sleep 3 # Esperar 3 segundos a que el puerto 9222 esté abierto
+
+      # Ejecutar la suite de tests de Playwright conectándose al Chrome ya abierto
       - name: Run Playwright Test Suite
         run: npx playwright test
         env:
@@ -39,11 +49,11 @@ jobs:
           VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
           BETSSON_USERNAME_WITH_BALANCE: ${{ secrets.BETSSON_USERNAME_WITH_BALANCE }}
           BETSSON_PASSWORD: ${{ secrets.BETSSON_PASSWORD }}
+          CI: true
 
-      # 6. Subir el reporte HTML y las evidencias visuales
       - name: Upload Playwright Report Artifact
         uses: actions/upload-artifact@v4
-        if: always() # Se ejecuta siempre para analizar capturas y trazas aunque falle
+        if: always()
         with:
           name: betsson-vlm-report-es
           path: |
