@@ -100,6 +100,29 @@ Error: Failed checks:
 
 El test usa `test.fail()`: el fallo es el resultado esperado, así que la suite queda en verde mientras el informe y el trace muestran el error igual que lo haría un defecto real.
 
+### Carpeta `report`: informe y trazas de Playwright
+
+La carpeta **`report/`** contiene el informe de la última ejecución completa de la suite contra betsson.es, con las **trazas de Playwright** de cada test:
+
+| Ruta | Contenido |
+| --- | --- |
+| `report/checks.md` | Tabla de comprobaciones por escenario y juego, con el detalle de cada PASS/FAIL |
+| `report/checks.json` | Lo mismo en JSON, para procesarlo |
+| `report/html/index.html` | Informe HTML de Playwright: tests, pasos, errores y capturas adjuntas a cada comprobación |
+| `report/html/data/*.zip` | **Trazas de Playwright** de cada test (escenario 1, escenario 2, entrada al juego y prueba de fallo) |
+| `report/html/data/*.png` | Capturas de evidencia (saldo de la cabecera, pantalla del juego antes y después, botón marcado) |
+
+Para abrir el informe y navegar por las trazas:
+
+```powershell
+npm run report                                            # abre el informe en http://localhost:9323
+npx playwright show-trace report/html/data/<archivo>.zip  # abre una traza concreta
+```
+
+Cada traza muestra el test paso a paso: acciones, capturas del DOM en cada paso, peticiones de red (incluidas las del servidor del juego que usa el análisis de tráfico) y el error cuando lo hay. Por ejemplo, la traza de la prueba de fallo muestra las respuestas alteradas y el error `Failed checks`.
+
+Se han quitado de las trazas los fotogramas del screencast (la tira de imágenes de la línea de tiempo), que ocupaban unos 170 MB por traza. El resto de la información está completa.
+
 ### Evidencias que deja cada ejecución
 
 - **`report/checks.md` y `report/checks.json`:** tabla de comprobaciones por escenario, juego y proveedor. También se publica en el resumen del job de GitHub Actions.

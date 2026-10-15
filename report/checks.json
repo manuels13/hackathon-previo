@@ -1,0 +1,183 @@
+[
+  {
+    "market": "es",
+    "scenario": "Enter the game",
+    "game": "Sweet Bonanza",
+    "provider": "Pragmatic Play",
+    "checks": [
+      {
+        "name": "Betsson dialogs before the game handled",
+        "passed": true,
+        "details": "none shown"
+      },
+      {
+        "name": "Game loaded",
+        "passed": true,
+        "details": "game screen shown after 2763 ms"
+      },
+      {
+        "name": "Intro screen passed",
+        "passed": true,
+        "details": "screen changed after clicking continue"
+      }
+    ],
+    "status": "passed"
+  },
+  {
+    "market": "es",
+    "scenario": "Fault injection — game shows a balance that is not Betsson's",
+    "game": "Sweet Bonanza",
+    "provider": "Pragmatic Play",
+    "checks": [
+      {
+        "name": "Betsson session active",
+        "passed": true,
+        "details": "wallet loaded"
+      },
+      {
+        "name": "Game loaded",
+        "passed": true,
+        "details": "after 2866 ms"
+      }
+    ],
+    "status": "failed"
+  },
+  {
+    "market": "es",
+    "scenario": "Scenario 1 — completed Real Play spin",
+    "game": "Sweet Bonanza",
+    "provider": "Pragmatic Play",
+    "checks": [
+      {
+        "name": "Betsson session active",
+        "passed": true,
+        "details": "1138s left in the login session; wallet loaded"
+      },
+      {
+        "name": "Betsson balance before: header matches wallet",
+        "passed": true,
+        "details": "header shows \"97,25 €\", wallet API 97.25 EUR"
+      },
+      {
+        "name": "Game loaded",
+        "passed": true,
+        "details": "after 2713 ms"
+      },
+      {
+        "name": "Game session opened in the market currency and language",
+        "passed": true,
+        "details": "game server: currency EUR, language es, jurisdiction ES; expected EUR / es"
+      },
+      {
+        "name": "Currency shown on screen matches market",
+        "passed": true,
+        "details": "screen \"€\", wallet EUR, expected EUR"
+      },
+      {
+        "name": "Game credit on screen matches Betsson balance",
+        "passed": true,
+        "details": "screen 97.25, Betsson wallet 97.25, game server 97.25"
+      },
+      {
+        "name": "Spin started",
+        "passed": true,
+        "details": "reels moved on screen: true; spin request sent to the game server: true"
+      },
+      {
+        "name": "Spin completed",
+        "passed": true,
+        "details": "game server closed the round: 1 calls in 0 ms"
+      },
+      {
+        "name": "Displayed wager is the wager used",
+        "passed": true,
+        "details": "screen shows 0.20, spin request charged 0.20"
+      },
+      {
+        "name": "In-game balance consistent with the spin (after = before − wager + payout)",
+        "passed": true,
+        "details": "97.25 − 0.20 + 0.00 = 97.05; game server reports 97.05"
+      },
+      {
+        "name": "Betsson balance reconciles (after = before − wager + payout)",
+        "passed": true,
+        "details": "97.25 − 0.20 + 0.00 = 97.05; wallet 97.05, header \"97,05 €\""
+      },
+      {
+        "name": "Betsson wallet matches the game server balance",
+        "passed": true,
+        "details": "Betsson wallet 97.05, game server 97.05"
+      }
+    ],
+    "status": "passed"
+  },
+  {
+    "market": "es",
+    "scenario": "Scenario 2 — insufficient balance",
+    "game": "Sweet Bonanza",
+    "provider": "Pragmatic Play",
+    "checks": [
+      {
+        "name": "Betsson session active with the account without balance",
+        "passed": true,
+        "details": "1194s left in the login session; wallet loaded; account: empty"
+      },
+      {
+        "name": "Betsson balance before: header matches wallet",
+        "passed": true,
+        "details": "header shows \"0,00 €\", wallet API 0.00 EUR"
+      },
+      {
+        "name": "Betsson dialogs before the game handled",
+        "passed": true,
+        "details": "none shown"
+      },
+      {
+        "name": "Game loaded",
+        "passed": true,
+        "details": "after 3651 ms"
+      },
+      {
+        "name": "Game session opened in the market currency and language",
+        "passed": true,
+        "details": "game server: currency EUR, language es, jurisdiction ES; expected EUR / es"
+      },
+      {
+        "name": "Game credit on screen matches Betsson balance",
+        "passed": true,
+        "details": "screen 0.00, Betsson wallet 0.00, game server 0.00"
+      },
+      {
+        "name": "Balance is below the wager",
+        "passed": true,
+        "details": "screen balance 0.00, wallet 0.00, wager 2.00"
+      },
+      {
+        "name": "Spin rejected, not played as a paid spin",
+        "passed": true,
+        "details": "screen: no spin played (reels area changed); game server: 0 spin request(s), 0 refused, 0 charged"
+      },
+      {
+        "name": "Insufficient-balance message shown in the expected language",
+        "passed": true,
+        "details": "message \"Fondos insuficientes para realizar esta apuesta. Haga un depósito en su cuenta o reduzca el nivel de la apuesta.\"; language es (expected es); VLM: insufficient balance; provider wording matches"
+      },
+      {
+        "name": "Currency shown matches market",
+        "passed": true,
+        "details": "screen before \"€\", after \"€\", wallet EUR, expected EUR"
+      },
+      {
+        "name": "In-game balance does not change",
+        "passed": true,
+        "details": "screen 0.00 → 0.00; game server last balance 0.00"
+      },
+      {
+        "name": "Betsson balance does not change",
+        "passed": true,
+        "details": "wallet 0.00 → 0.00, header \"0,00 €\""
+      }
+    ],
+    "status": "passed"
+  }
+]
