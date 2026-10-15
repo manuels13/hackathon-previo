@@ -39,7 +39,7 @@ Resultado: **un spin completo cuesta 1 llamada al VLM.** Antes se analizaban cap
 
 ## Resultados (informe de Playwright)
 
-Datos tomados de `report/checks.md`, el informe que genera la propia suite tras cada ejecución contra betsson.es.
+Datos tomados de `report/checks.md`, el informe que genera la propia suite tras cada ejecución contra betsson.es. Existían vídeos como traza pero debido al internet y el peso de los mismos, se decidió no incluirlo y dejar solo las imagenes comentadas
 
 ### Escenario 1 — spin completado (Sweet Bonanza): 12/12
 
