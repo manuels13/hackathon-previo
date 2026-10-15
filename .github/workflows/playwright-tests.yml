@@ -1,0 +1,64 @@
+name: Betsson VLM Automated Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Permite ejecutar el workflow de forma manual desde GitHub Actions
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # Permite que si un mercado falla, el otro termine de ejecutarse
+      matrix:
+        market: [com, pe] # Ejecuta ambos escenarios para betsson.com y betsson.pe
+
+    steps:
+      # 1. Descargar el código fuente del repositorio
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Configurar el entorno de Node.js (versión 20 por compatibilidad)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. Instalar las dependencias exactas usando npm ci
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Instalar los navegadores de Playwright necesarios en Linux
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      # 5. Ejecutar los tests de Playwright inyectando el mercado y los secretos corporativos
+      - name: Run Playwright Test Suite
+        run: npx playwright test
+        env:
+          MARKET: ${{ matrix.market }}
+          VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
+          BETSSON_USERNAME_WITH_BALANCE: ${{ secrets.BETSSON_USERNAME_WITH_BALANCE }}
+          BETSSON_PASSWORD: ${{ secrets.BETSSON_PASSWORD }}
+
+      # 6. Renombrar la carpeta de reportes por mercado para evitar sobreescrituras
+      - name: Rename Report Folder per Market
+        if: always()
+        run: |
+          if [ -d "report/html" ]; then
+            mv report/html report/html-${{ matrix.market }}
+          elif [ -d "playwright-report" ]; then
+            mv playwright-report report/html-${{ matrix.market }}
+          fi
+
+      # 7. Subir el reporte multimedia y evidencias como artefacto descargable
+      - name: Upload Playwright Report Artifact
+        uses: actions/upload-artifact@v4
+        if: always() # Se ejecuta siempre (éxito o fallo) para permitir la auditoría forense
+        with:
+          name: betsson-vlm-report-${{ matrix.market }}
+          path: report/html-${{ matrix.market }}/
+          retention-days: 30
