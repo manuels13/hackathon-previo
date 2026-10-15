@@ -12,38 +12,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Descargar el código fuente del repositorio
+      # 1. Descargar el código fuente
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Configurar el entorno de Node.js
+      # 2. Configurar Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 3. Instalar las dependencias exactas
+      # 3. Instalar las dependencias de Node.js
       - name: Install dependencies
         run: npm ci
 
-      # 4. Instalar los navegadores de Playwright
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+      # 4. Instalar Google Chrome Oficial y dependencias de sistema (Xvfb)
+      - name: Install Google Chrome & System Dependencies
+        run: |
+          npx playwright install chrome
+          npx playwright install-deps chrome
 
-      # 5. Ejecutar los tests fijando el mercado a 'es'
-      - name: Run Playwright Test Suite
-        run: npx playwright test
+      # 5. Ejecutar los tests dentro de un servidor de pantalla virtual (Xvfb)
+      - name: Run Playwright Test Suite with Xvfb
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" npx playwright test
         env:
           MARKET: es
           VLM_API_KEY: ${{ secrets.VLM_API_KEY }}
           BETSSON_USERNAME_WITH_BALANCE: ${{ secrets.BETSSON_USERNAME_WITH_BALANCE }}
           BETSSON_PASSWORD: ${{ secrets.BETSSON_PASSWORD }}
+          CI: true
 
-      # 6. Subir el reporte HTML y las evidencias visuales
+      # 6. Subir el reporte HTML y evidencias visuales
       - name: Upload Playwright Report Artifact
         uses: actions/upload-artifact@v4
-        if: always() # Se ejecuta siempre para analizar capturas y trazas aunque falle
+        if: always()
         with:
           name: betsson-vlm-report-es
           path: |
